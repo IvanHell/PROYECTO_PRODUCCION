@@ -1,0 +1,638 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Panel de Producción</title>
+<style>
+  :root{
+    --bg:#f4f5f7; --card:#ffffff; --ink:#1f2430; --sub:#6b7280;
+    --line:#e5e7eb; --accent:#2563eb; --accent-ink:#ffffff;
+    --good:#16a34a; --warn:#d97706; --bad:#dc2626;
+    --radius:10px;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:Arial,Helvetica,sans-serif;background:var(--bg);color:var(--ink);}
+  header{background:var(--card);border-bottom:1px solid var(--line);padding:14px 20px;}
+  header h1{margin:0;font-size:18px;}
+  header p{margin:2px 0 0;color:var(--sub);font-size:13px;}
+  .wrap{max-width:1180px;margin:0 auto;padding:16px;}
+  .tabs{display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap;}
+  .tab-btn{background:var(--card);border:1px solid var(--line);padding:8px 14px;border-radius:999px;cursor:pointer;font-size:13px;color:var(--ink);}
+  .tab-btn.active{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);}
+  .subtabs{display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;}
+  .subtab-btn{background:transparent;border:1px solid var(--line);padding:6px 12px;border-radius:8px;cursor:pointer;font-size:12.5px;color:var(--sub);}
+  .subtab-btn.active{background:#eef2ff;color:var(--accent);border-color:var(--accent);font-weight:bold;}
+  .panel{display:none;}
+  .panel.active{display:block;}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:16px;margin-bottom:16px;}
+  .card h2{margin:0 0 12px;font-size:15px;}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;}
+  label{display:block;font-size:11.5px;color:var(--sub);margin-bottom:3px;}
+  input,select{width:100%;padding:7px 8px;border:1px solid var(--line);border-radius:6px;font-size:13px;font-family:inherit;}
+  .btn{background:var(--accent);color:#fff;border:none;padding:9px 16px;border-radius:7px;cursor:pointer;font-size:13px;margin-top:12px;}
+  .btn.secondary{background:#fff;color:var(--accent);border:1px solid var(--accent);}
+  .btn.small{padding:4px 9px;font-size:12px;margin-top:0;}
+  .btn.danger{background:#fff;color:var(--bad);border:1px solid var(--bad);}
+  table{width:100%;border-collapse:collapse;font-size:12.5px;}
+  th,td{border:1px solid var(--line);padding:6px 7px;text-align:center;white-space:nowrap;}
+  th{background:#f8f9fb;position:sticky;top:0;}
+  td.left{text-align:left;}
+  .tablewrap{overflow-x:auto;max-height:480px;overflow-y:auto;border-radius:8px;border:1px solid var(--line);}
+  .pill{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:bold;}
+  .pill.good{background:#dcfce7;color:var(--good);}
+  .pill.warn{background:#fef3c7;color:var(--warn);}
+  .pill.bad{background:#fee2e2;color:var(--bad);}
+  .status{font-size:12px;color:var(--sub);margin-left:10px;}
+  .totals{font-weight:bold;background:#f8f9fb;}
+  .empty{color:var(--sub);font-size:13px;padding:20px;text-align:center;}
+  .row-actions{display:flex;gap:6px;justify-content:center;}
+  .note{font-size:12px;color:var(--sub);margin-top:8px;}
+  .kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px;}
+  .kpi{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:12px;}
+  .kpi .num{font-size:20px;font-weight:bold;}
+  .kpi .lbl{font-size:11.5px;color:var(--sub);}
+</style>
+</head>
+<body>
+<header>
+  <h1>Panel de Producción — Máquinas VALLE</h1>
+  <p>Captura una sola vez, obtén los resúmenes automáticamente.</p>
+</header>
+<div class="wrap">
+  <div class="tabs">
+    <button class="tab-btn active" data-tab="captura">📥 Captura</button>
+    <button class="tab-btn" data-tab="resumen">📊 Resúmenes</button>
+  </div>
+
+  <!-- ===================== CAPTURA ===================== -->
+  <div class="panel active" id="panel-captura">
+    <div class="subtabs">
+      <button class="subtab-btn active" data-sub="cap-maquinas">Producción Máquinas</button>
+      <button class="subtab-btn" data-sub="cap-kit">Ensamble KIT</button>
+      <button class="subtab-btn" data-sub="cap-paro">Tiempos de Paro</button>
+      <button class="subtab-btn" data-sub="cap-tarimas">Tarimas</button>
+      <button class="subtab-btn" data-sub="cap-contenedores">Contenedores</button>
+    </div>
+
+    <div class="subpanel active" id="cap-maquinas">
+      <div class="card">
+        <h2>Nueva captura de producción</h2>
+        <div class="grid">
+          <div><label>Fecha</label><input type="date" id="f-fecha"></div>
+          <div><label>Máquina</label>
+            <select id="f-maquina">
+              <option value="">Selecciona...</option>
+            </select>
+          </div>
+          <div><label>Producto</label><input id="f-producto" placeholder="REJILLA, TAPA..."></div>
+          <div><label>Número de Parte (NP)</label><input id="f-np" placeholder="ej. 1500144B"></div>
+          <div><label>Operador(es)</label><input id="f-operador" placeholder="Nombres"></div>
+          <div><label>RRHH (personas)</label><input type="number" id="f-rrhh" min="0"></div>
+          <div><label>Cantidad Producida</label><input type="number" id="f-cant" min="0"></div>
+          <div><label>Tiempo trabajado (min, informativo)</label><input type="number" id="f-tiempo" min="0"></div>
+          <div style="grid-column:1/-1"><label>Comentarios</label><input id="f-comentarios"></div>
+        </div>
+        <button class="btn" onclick="addMaquinaEntry()">Agregar registro</button>
+        <span class="status" id="status-maquinas"></span>
+      </div>
+      <div class="card">
+        <h2>Registros capturados</h2>
+        <div class="tablewrap"><table id="tbl-maquinas"><thead></thead><tbody></tbody></table></div>
+      </div>
+    </div>
+
+    <div class="subpanel" id="cap-kit">
+      <div class="card">
+        <h2>Nueva captura de Ensamble KIT</h2>
+        <div class="grid">
+          <div><label>Fecha</label><input type="date" id="k-fecha"></div>
+          <div><label>Personal</label><input id="k-personal" placeholder="Nombres"></div>
+          <div><label>Número de Parte KIT</label><input id="k-np" placeholder="KIT SANHUA..."></div>
+          <div><label>Cantidad Ensamblada</label><input type="number" id="k-cant" min="0"></div>
+        </div>
+        <button class="btn" onclick="addKitEntry()">Agregar registro</button>
+        <span class="status" id="status-kit"></span>
+      </div>
+      <div class="card">
+        <h2>Registros capturados</h2>
+        <div class="tablewrap"><table id="tbl-kit"><thead></thead><tbody></tbody></table></div>
+      </div>
+    </div>
+
+    <div class="subpanel" id="cap-paro">
+      <div class="card">
+        <h2>Nuevo tiempo de paro</h2>
+        <div class="grid">
+          <div><label>Fecha</label><input type="date" id="p-fecha"></div>
+          <div><label>Máquina</label>
+            <select id="p-maquina"><option value="">Selecciona...</option></select>
+          </div>
+          <div><label>Minutos de paro</label><input type="number" id="p-minutos" min="0"></div>
+          <div><label>Motivo</label><input id="p-motivo" placeholder="Falla mecánica, cambio de MP..."></div>
+        </div>
+        <button class="btn" onclick="addParoEntry()">Agregar registro</button>
+        <span class="status" id="status-paro"></span>
+      </div>
+      <div class="card">
+        <h2>Registros capturados</h2>
+        <div class="tablewrap"><table id="tbl-paro"><thead></thead><tbody></tbody></table></div>
+      </div>
+    </div>
+
+    <div class="subpanel" id="cap-tarimas">
+      <div class="card">
+        <h2>Nueva captura de Tarimas</h2>
+        <div class="grid">
+          <div><label>Fecha</label><input type="date" id="t-fecha"></div>
+          <div><label>Persona</label><input id="t-persona" placeholder="José Reyes..."></div>
+          <div><label>Tipo</label>
+            <select id="t-tipo"><option>POLARIS</option><option>RECUPERADAS - USO INTERNO</option></select>
+          </div>
+          <div><label>Cantidad</label><input type="number" id="t-cant" min="0"></div>
+        </div>
+        <button class="btn" onclick="addTarimaEntry()">Agregar registro</button>
+        <span class="status" id="status-tarimas"></span>
+      </div>
+      <div class="card">
+        <h2>Registros capturados</h2>
+        <div class="tablewrap"><table id="tbl-tarimas"><thead></thead><tbody></tbody></table></div>
+      </div>
+    </div>
+
+    <div class="subpanel" id="cap-contenedores">
+      <div class="card">
+        <h2>Nueva captura de Contenedores</h2>
+        <div class="grid">
+          <div><label>Fecha</label><input type="date" id="c-fecha"></div>
+          <div><label>Turno</label>
+            <select id="c-turno"><option>1er Turno</option><option>2do Turno</option><option>Tiempo Extra</option></select>
+          </div>
+          <div><label>Personas</label><input type="number" id="c-personas" min="0"></div>
+          <div><label>Contenedores realizados</label><input type="number" id="c-cant" min="0"></div>
+        </div>
+        <button class="btn" onclick="addContenedorEntry()">Agregar registro</button>
+        <span class="status" id="status-contenedores"></span>
+      </div>
+      <div class="card">
+        <h2>Registros capturados</h2>
+        <div class="tablewrap"><table id="tbl-contenedores"><thead></thead><tbody></tbody></table></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== RESUMEN ===================== -->
+  <div class="panel" id="panel-resumen">
+    <div class="subtabs">
+      <button class="subtab-btn active" data-sub="res-maquinas">Por Máquina</button>
+      <button class="subtab-btn" data-sub="res-kit">Ensamble KIT</button>
+      <button class="subtab-btn" data-sub="res-tarimas">Tarimas</button>
+      <button class="subtab-btn" data-sub="res-contenedores">Contenedores</button>
+    </div>
+
+    <div class="subpanel active" id="res-maquinas">
+      <div class="card">
+        <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(150px,220px));">
+          <div><label>Máquina</label><select id="r-maquina"></select></div>
+          <div><label>Mes</label><select id="r-mes"></select></div>
+          <div><label>Año</label><input type="number" id="r-anio" value="2026"></div>
+        </div>
+        <button class="btn secondary" onclick="renderResumenMaquina()">Generar resumen</button>
+        <p class="note">El "Tiempo Disponible" se precarga con el horario estándar (Lun–Vie 570 min, Martes 600 min, Sáb/Dom 0). Para Flexo y para cualquier día con horas extra, edítalo directamente en la tabla — el turno real varía y no se puede adivinar.</p>
+      </div>
+      <div class="kpi-grid" id="kpi-maquina"></div>
+      <div class="card">
+        <div class="tablewrap"><table id="tbl-resumen-maquina"><thead></thead><tbody></tbody></table></div>
+      </div>
+    </div>
+
+    <div class="subpanel" id="res-kit">
+      <div class="card">
+        <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(150px,220px));">
+          <div><label>Mes</label><select id="rk-mes"></select></div>
+          <div><label>Año</label><input type="number" id="rk-anio" value="2026"></div>
+        </div>
+        <button class="btn secondary" onclick="renderResumenKit()">Generar resumen</button>
+      </div>
+      <div class="card"><div class="tablewrap"><table id="tbl-resumen-kit"><thead></thead><tbody></tbody></table></div></div>
+    </div>
+
+    <div class="subpanel" id="res-tarimas">
+      <div class="card">
+        <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(150px,220px));">
+          <div><label>Mes</label><select id="rt-mes"></select></div>
+          <div><label>Año</label><input type="number" id="rt-anio" value="2026"></div>
+        </div>
+        <button class="btn secondary" onclick="renderResumenTarimas()">Generar resumen</button>
+      </div>
+      <div class="card"><div class="tablewrap"><table id="tbl-resumen-tarimas"><thead></thead><tbody></tbody></table></div></div>
+    </div>
+
+    <div class="subpanel" id="res-contenedores">
+      <div class="card">
+        <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(150px,220px));">
+          <div><label>Mes</label><select id="rc-mes"></select></div>
+          <div><label>Año</label><input type="number" id="rc-anio" value="2026"></div>
+        </div>
+        <button class="btn secondary" onclick="renderResumenContenedores()">Generar resumen</button>
+      </div>
+      <div class="card"><div class="tablewrap"><table id="tbl-resumen-contenedores"><thead></thead><tbody></tbody></table></div></div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ======================= CONFIG ======================= */
+const MACHINES = [
+  {id:'FLEXO', label:'Flexo', piezasMin:26, ajuste:30, flexo:true},
+  {id:'ROLADORA', label:'Roladora I', piezasMin:10, ajuste:15},
+  {id:'RANURADORA', label:'Ranuradora', piezasMin:37, ajuste:35},
+  {id:'T_ROTATIVA', label:'Troqueladora Rotativa', piezasMin:35, ajuste:50},
+  {id:'CAIMAN', label:'Caimán', piezasMin:5, ajuste:15},
+  {id:'PEGADORA', label:'Semiautomática (Pegadora)', piezasMin:80, ajuste:30},
+  {id:'T_PLANA', label:'Troqueladora Plana', piezasMin:35, ajuste:50},
+  {id:'ARMADORA_REJILLAS', label:'Máquina Armadora (Armadora de Rejillas)', piezasMin:26, ajuste:30},
+];
+const DIAS = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
+const DIAS_ABR = ['D','L','M','MI','J','V','S'];
+const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+
+function machineById(id){ return MACHINES.find(m=>m.id===id); }
+function defaultTiempoDisponible(machineId, dateStr){
+  const m = machineById(machineId);
+  const d = new Date(dateStr+'T00:00:00');
+  const dow = d.getDay(); // 0=domingo
+  if(m && m.flexo) return null; // Flexo: siempre manual, varía demasiado
+  if(dow===0 || dow===6) return 0; // no laboran fines de semana
+  if(dow===2) return 600; // martes
+  return 570; // resto entre semana
+}
+
+/* ======================= STORAGE HELPERS ======================= */
+async function loadArr(key){
+  try{
+    const r = await window.storage.get(key, false);
+    return r && r.value ? JSON.parse(r.value) : [];
+  }catch(e){ return []; }
+}
+async function saveArr(key, arr){
+  try{
+    await window.storage.set(key, JSON.stringify(arr), false);
+    return true;
+  }catch(e){ console.error('storage error', e); return false; }
+}
+async function loadObj(key){
+  try{
+    const r = await window.storage.get(key, false);
+    return r && r.value ? JSON.parse(r.value) : {};
+  }catch(e){ return {}; }
+}
+async function saveObj(key, obj){
+  try{ await window.storage.set(key, JSON.stringify(obj), false); return true; }
+  catch(e){ console.error('storage error', e); return false; }
+}
+
+let DB = { maquinas:[], kit:[], paro:[], tarimas:[], contenedores:[], tiempoOverrides:{} };
+
+async function loadAll(){
+  DB.maquinas = await loadArr('entries-maquinas');
+  DB.kit = await loadArr('entries-kit');
+  DB.paro = await loadArr('entries-paro');
+  DB.tarimas = await loadArr('entries-tarimas');
+  DB.contenedores = await loadArr('entries-contenedores');
+  DB.tiempoOverrides = await loadObj('config-tiempo-overrides');
+}
+
+function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
+
+/* ======================= TABS ======================= */
+document.querySelectorAll('.tab-btn').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+    document.getElementById('panel-'+btn.dataset.tab).classList.add('active');
+  });
+});
+document.querySelectorAll('.subtabs').forEach(group=>{
+  group.querySelectorAll('.subtab-btn').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      group.querySelectorAll('.subtab-btn').forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+      const parent = group.parentElement;
+      parent.querySelectorAll('.subpanel').forEach(p=>p.classList.remove('active'));
+      document.getElementById(btn.dataset.sub).classList.add('active');
+    });
+  });
+});
+
+/* ======================= INIT SELECTS ======================= */
+function fillMachineSelect(sel){
+  sel.innerHTML = '<option value="">Selecciona...</option>' +
+    MACHINES.map(m=>`<option value="${m.id}">${m.label}</option>`).join('');
+}
+function fillMonthSelect(sel){
+  sel.innerHTML = MESES.map((m,i)=>`<option value="${i+1}">${m}</option>`).join('');
+}
+
+/* ======================= CAPTURA: MAQUINAS ======================= */
+async function addMaquinaEntry(){
+  const fecha = val('f-fecha');
+  const maquina = val('f-maquina');
+  if(!fecha || !maquina){ setStatus('status-maquinas','Fecha y máquina son obligatorias.', true); return; }
+  DB.maquinas.push({
+    id: uid(), fecha, maquina,
+    producto: val('f-producto'), np: val('f-np'), operador: val('f-operador'),
+    rrhh: numval('f-rrhh'), cant: numval('f-cant'), tiempo: numval('f-tiempo'),
+    comentarios: val('f-comentarios')
+  });
+  await saveArr('entries-maquinas', DB.maquinas);
+  ['f-producto','f-np','f-operador','f-rrhh','f-cant','f-tiempo','f-comentarios'].forEach(id=>document.getElementById(id).value='');
+  setStatus('status-maquinas','Guardado ✓');
+  renderMaquinasTable();
+}
+async function deleteMaquinaEntry(id){
+  DB.maquinas = DB.maquinas.filter(e=>e.id!==id);
+  await saveArr('entries-maquinas', DB.maquinas);
+  renderMaquinasTable();
+}
+function renderMaquinasTable(){
+  const t = document.getElementById('tbl-maquinas');
+  const rows = [...DB.maquinas].sort((a,b)=>b.fecha.localeCompare(a.fecha));
+  t.querySelector('thead').innerHTML = `<tr><th>Fecha</th><th>Máquina</th><th>Producto</th><th>NP</th><th>Operador</th><th>RRHH</th><th>Cant. Prod.</th><th>Tiempo</th><th>Comentarios</th><th></th></tr>`;
+  t.querySelector('tbody').innerHTML = rows.length ? rows.map(e=>`
+    <tr>
+      <td>${e.fecha}</td><td class="left">${machineById(e.maquina)?.label||e.maquina}</td>
+      <td class="left">${e.producto||''}</td><td>${e.np||''}</td><td class="left">${e.operador||''}</td>
+      <td>${e.rrhh||0}</td><td>${e.cant||0}</td><td>${e.tiempo||0}</td><td class="left">${e.comentarios||''}</td>
+      <td><button class="btn small danger" onclick="deleteMaquinaEntry('${e.id}')">Borrar</button></td>
+    </tr>`).join('') : `<tr><td colspan="10" class="empty">Sin registros aún</td></tr>`;
+}
+
+/* ======================= CAPTURA: KIT ======================= */
+async function addKitEntry(){
+  const fecha = val('k-fecha');
+  if(!fecha){ setStatus('status-kit','La fecha es obligatoria.', true); return; }
+  DB.kit.push({ id:uid(), fecha, personal: val('k-personal'), np: val('k-np'), cant: numval('k-cant') });
+  await saveArr('entries-kit', DB.kit);
+  ['k-personal','k-np','k-cant'].forEach(id=>document.getElementById(id).value='');
+  setStatus('status-kit','Guardado ✓');
+  renderKitTable();
+}
+async function deleteKitEntry(id){
+  DB.kit = DB.kit.filter(e=>e.id!==id);
+  await saveArr('entries-kit', DB.kit);
+  renderKitTable();
+}
+function renderKitTable(){
+  const t = document.getElementById('tbl-kit');
+  const rows = [...DB.kit].sort((a,b)=>b.fecha.localeCompare(a.fecha));
+  t.querySelector('thead').innerHTML = `<tr><th>Fecha</th><th>Personal</th><th>NP KIT</th><th>Cantidad</th><th></th></tr>`;
+  t.querySelector('tbody').innerHTML = rows.length ? rows.map(e=>`
+    <tr><td>${e.fecha}</td><td class="left">${e.personal||''}</td><td class="left">${e.np||''}</td><td>${e.cant||0}</td>
+    <td><button class="btn small danger" onclick="deleteKitEntry('${e.id}')">Borrar</button></td></tr>`).join('')
+    : `<tr><td colspan="5" class="empty">Sin registros aún</td></tr>`;
+}
+
+/* ======================= CAPTURA: PARO ======================= */
+async function addParoEntry(){
+  const fecha = val('p-fecha'); const maquina = val('p-maquina');
+  if(!fecha || !maquina){ setStatus('status-paro','Fecha y máquina son obligatorias.', true); return; }
+  DB.paro.push({ id:uid(), fecha, maquina, minutos: numval('p-minutos'), motivo: val('p-motivo') });
+  await saveArr('entries-paro', DB.paro);
+  ['p-minutos','p-motivo'].forEach(id=>document.getElementById(id).value='');
+  setStatus('status-paro','Guardado ✓');
+  renderParoTable();
+}
+async function deleteParoEntry(id){
+  DB.paro = DB.paro.filter(e=>e.id!==id);
+  await saveArr('entries-paro', DB.paro);
+  renderParoTable();
+}
+function renderParoTable(){
+  const t = document.getElementById('tbl-paro');
+  const rows = [...DB.paro].sort((a,b)=>b.fecha.localeCompare(a.fecha));
+  t.querySelector('thead').innerHTML = `<tr><th>Fecha</th><th>Máquina</th><th>Minutos</th><th>Motivo</th><th></th></tr>`;
+  t.querySelector('tbody').innerHTML = rows.length ? rows.map(e=>`
+    <tr><td>${e.fecha}</td><td class="left">${machineById(e.maquina)?.label||e.maquina}</td><td>${e.minutos||0}</td><td class="left">${e.motivo||''}</td>
+    <td><button class="btn small danger" onclick="deleteParoEntry('${e.id}')">Borrar</button></td></tr>`).join('')
+    : `<tr><td colspan="5" class="empty">Sin registros aún</td></tr>`;
+}
+
+/* ======================= CAPTURA: TARIMAS ======================= */
+async function addTarimaEntry(){
+  const fecha = val('t-fecha');
+  if(!fecha){ setStatus('status-tarimas','La fecha es obligatoria.', true); return; }
+  DB.tarimas.push({ id:uid(), fecha, persona: val('t-persona'), tipo: val('t-tipo'), cant: numval('t-cant') });
+  await saveArr('entries-tarimas', DB.tarimas);
+  ['t-persona','t-cant'].forEach(id=>document.getElementById(id).value='');
+  setStatus('status-tarimas','Guardado ✓');
+  renderTarimasTable();
+}
+async function deleteTarimaEntry(id){
+  DB.tarimas = DB.tarimas.filter(e=>e.id!==id);
+  await saveArr('entries-tarimas', DB.tarimas);
+  renderTarimasTable();
+}
+function renderTarimasTable(){
+  const t = document.getElementById('tbl-tarimas');
+  const rows = [...DB.tarimas].sort((a,b)=>b.fecha.localeCompare(a.fecha));
+  t.querySelector('thead').innerHTML = `<tr><th>Fecha</th><th>Persona</th><th>Tipo</th><th>Cantidad</th><th></th></tr>`;
+  t.querySelector('tbody').innerHTML = rows.length ? rows.map(e=>`
+    <tr><td>${e.fecha}</td><td class="left">${e.persona||''}</td><td class="left">${e.tipo||''}</td><td>${e.cant||0}</td>
+    <td><button class="btn small danger" onclick="deleteTarimaEntry('${e.id}')">Borrar</button></td></tr>`).join('')
+    : `<tr><td colspan="5" class="empty">Sin registros aún</td></tr>`;
+}
+
+/* ======================= CAPTURA: CONTENEDORES ======================= */
+async function addContenedorEntry(){
+  const fecha = val('c-fecha');
+  if(!fecha){ setStatus('status-contenedores','La fecha es obligatoria.', true); return; }
+  DB.contenedores.push({ id:uid(), fecha, turno: val('c-turno'), personas: numval('c-personas'), cant: numval('c-cant') });
+  await saveArr('entries-contenedores', DB.contenedores);
+  ['c-personas','c-cant'].forEach(id=>document.getElementById(id).value='');
+  setStatus('status-contenedores','Guardado ✓');
+  renderContenedoresTable();
+}
+async function deleteContenedorEntry(id){
+  DB.contenedores = DB.contenedores.filter(e=>e.id!==id);
+  await saveArr('entries-contenedores', DB.contenedores);
+  renderContenedoresTable();
+}
+function renderContenedoresTable(){
+  const t = document.getElementById('tbl-contenedores');
+  const rows = [...DB.contenedores].sort((a,b)=>b.fecha.localeCompare(a.fecha));
+  t.querySelector('thead').innerHTML = `<tr><th>Fecha</th><th>Turno</th><th>Personas</th><th>Contenedores</th><th></th></tr>`;
+  t.querySelector('tbody').innerHTML = rows.length ? rows.map(e=>`
+    <tr><td>${e.fecha}</td><td class="left">${e.turno||''}</td><td>${e.personas||0}</td><td>${e.cant||0}</td>
+    <td><button class="btn small danger" onclick="deleteContenedorEntry('${e.id}')">Borrar</button></td></tr>`).join('')
+    : `<tr><td colspan="5" class="empty">Sin registros aún</td></tr>`;
+}
+
+/* ======================= RESUMEN: MAQUINAS ======================= */
+async function renderResumenMaquina(){
+  const maquina = val('r-maquina');
+  const mes = parseInt(val('r-mes'),10);
+  const anio = parseInt(val('r-anio'),10);
+  if(!maquina){ return; }
+  const diasEnMes = new Date(anio, mes, 0).getDate();
+  const cfg = machineById(maquina);
+
+  let totalProd=0, totalParo=0, sumPct=0, nPct=0;
+  const rowsHtml = [];
+  for(let d=1; d<=diasEnMes; d++){
+    const fecha = `${anio}-${String(mes).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const dow = new Date(fecha+'T00:00:00').getDay();
+    const entriesDia = DB.maquinas.filter(e=>e.fecha===fecha && e.maquina===maquina);
+    const produccion = entriesDia.reduce((s,e)=>s+(Number(e.cant)||0),0);
+    const partidas = new Set(entriesDia.map(e=>(e.np||'').trim().toUpperCase()).filter(x=>x)).size || (entriesDia.length?1:0);
+
+    const overrideKey = maquina+'_'+fecha;
+    let tiempoDisp = DB.tiempoOverrides[overrideKey];
+    if(tiempoDisp===undefined){
+      const def = defaultTiempoDisponible(maquina, fecha);
+      tiempoDisp = def===null ? '' : def;
+    }
+    const tiempoNum = Number(tiempoDisp)||0;
+
+    const real = tiempoNum>0 ? produccion/tiempoNum : 0;
+    const esperado = tiempoNum>0 ? (cfg.piezasMin*tiempoNum)/(tiempoNum+(partidas*cfg.ajuste)) : 0;
+    const pct = esperado>0 ? real/esperado : 0;
+
+    const paroDia = DB.paro.filter(e=>e.fecha===fecha && e.maquina===maquina);
+    const paroMin = paroDia.reduce((s,e)=>s+(Number(e.minutos)||0),0);
+    const motivos = paroDia.map(e=>e.motivo).filter(x=>x).join('; ');
+
+    if(tiempoNum>0){ totalProd+=produccion; totalParo+=paroMin; sumPct+=pct; nPct++; }
+
+    const pctPill = tiempoNum===0 ? '' :
+      `<span class="pill ${pct>=0.9?'good':pct>=0.7?'warn':'bad'}">${(pct*100).toFixed(0)}%</span>`;
+
+    rowsHtml.push(`<tr>
+      <td>${DIAS_ABR[dow]}</td><td>${fecha}</td>
+      <td><input type="number" style="width:70px" value="${tiempoDisp}" onchange="updateTiempoOverride('${maquina}','${fecha}',this.value)"></td>
+      <td>${produccion}</td><td>${partidas}</td>
+      <td>${real?real.toFixed(2):'-'}</td><td>${esperado?esperado.toFixed(2):'-'}</td>
+      <td>${pctPill}</td><td>${paroMin||''}</td><td class="left">${motivos}</td>
+    </tr>`);
+  }
+
+  const t = document.getElementById('tbl-resumen-maquina');
+  t.querySelector('thead').innerHTML = `<tr><th>Día</th><th>Fecha</th><th>Tiempo Disp. (min)</th><th>Producción</th><th>Partidas</th><th>Real (u/min)</th><th>Esperado (u/min)</th><th>%</th><th>Paro (min)</th><th>Motivo(s)</th></tr>`;
+  t.querySelector('tbody').innerHTML = rowsHtml.join('');
+
+  const kpi = document.getElementById('kpi-maquina');
+  const pctProm = nPct? (sumPct/nPct*100).toFixed(0) : '-';
+  kpi.innerHTML = `
+    <div class="kpi"><div class="num">${totalProd.toLocaleString()}</div><div class="lbl">Producción total del mes</div></div>
+    <div class="kpi"><div class="num">${pctProm}${nPct?'%':''}</div><div class="lbl">Cumplimiento promedio</div></div>
+    <div class="kpi"><div class="num">${totalParo}</div><div class="lbl">Minutos de paro en el mes</div></div>
+  `;
+}
+async function updateTiempoOverride(maquina, fecha, value){
+  const key = maquina+'_'+fecha;
+  if(value===''){ delete DB.tiempoOverrides[key]; } else { DB.tiempoOverrides[key] = Number(value); }
+  await saveObj('config-tiempo-overrides', DB.tiempoOverrides);
+  renderResumenMaquina();
+}
+
+/* ======================= RESUMEN: KIT ======================= */
+function renderResumenKit(){
+  const mes = parseInt(val('rk-mes'),10);
+  const anio = parseInt(val('rk-anio'),10);
+  const rows = DB.kit.filter(e=>{
+    const d=new Date(e.fecha+'T00:00:00');
+    return d.getFullYear()===anio && (d.getMonth()+1)===mes;
+  }).sort((a,b)=>a.fecha.localeCompare(b.fecha));
+  const total = rows.reduce((s,e)=>s+(Number(e.cant)||0),0);
+  const t = document.getElementById('tbl-resumen-kit');
+  t.querySelector('thead').innerHTML = `<tr><th>Fecha</th><th>Personal</th><th>NP KIT</th><th>Cantidad</th></tr>`;
+  t.querySelector('tbody').innerHTML = (rows.length? rows.map(e=>`
+    <tr><td>${e.fecha}</td><td class="left">${e.personal||''}</td><td class="left">${e.np||''}</td><td>${e.cant||0}</td></tr>`).join('')
+    : `<tr><td colspan="4" class="empty">Sin registros este mes</td></tr>`)
+    + `<tr class="totals"><td colspan="3">Total del mes</td><td>${total}</td></tr>`;
+}
+
+/* ======================= RESUMEN: TARIMAS ======================= */
+function renderResumenTarimas(){
+  const mes = parseInt(val('rt-mes'),10);
+  const anio = parseInt(val('rt-anio'),10);
+  const rows = DB.tarimas.filter(e=>{
+    const d=new Date(e.fecha+'T00:00:00');
+    return d.getFullYear()===anio && (d.getMonth()+1)===mes;
+  });
+  const porPersona = {};
+  rows.forEach(e=>{
+    const key = (e.persona||'Sin nombre')+' | '+(e.tipo||'');
+    porPersona[key] = (porPersona[key]||0) + (Number(e.cant)||0);
+  });
+  const t = document.getElementById('tbl-resumen-tarimas');
+  t.querySelector('thead').innerHTML = `<tr><th>Persona</th><th>Tipo</th><th>Total del mes</th></tr>`;
+  const entries = Object.entries(porPersona);
+  t.querySelector('tbody').innerHTML = entries.length ? entries.map(([k,v])=>{
+    const [persona,tipo] = k.split(' | ');
+    return `<tr><td class="left">${persona}</td><td class="left">${tipo}</td><td>${v}</td></tr>`;
+  }).join('') : `<tr><td colspan="3" class="empty">Sin registros este mes</td></tr>`;
+}
+
+/* ======================= RESUMEN: CONTENEDORES ======================= */
+function renderResumenContenedores(){
+  const mes = parseInt(val('rc-mes'),10);
+  const anio = parseInt(val('rc-anio'),10);
+  const rows = DB.contenedores.filter(e=>{
+    const d=new Date(e.fecha+'T00:00:00');
+    return d.getFullYear()===anio && (d.getMonth()+1)===mes;
+  });
+  const porTurno = {};
+  rows.forEach(e=>{
+    const key = e.turno||'Sin turno';
+    if(!porTurno[key]) porTurno[key] = {personas:0, cant:0};
+    porTurno[key].personas += Number(e.personas)||0;
+    porTurno[key].cant += Number(e.cant)||0;
+  });
+  const t = document.getElementById('tbl-resumen-contenedores');
+  t.querySelector('thead').innerHTML = `<tr><th>Turno</th><th>Personas (suma)</th><th>Contenedores (total)</th><th>Contenedores / persona-día</th></tr>`;
+  const entries = Object.entries(porTurno);
+  t.querySelector('tbody').innerHTML = entries.length ? entries.map(([k,v])=>`
+    <tr><td class="left">${k}</td><td>${v.personas}</td><td>${v.cant}</td><td>${v.personas? (v.cant/v.personas).toFixed(2):'-'}</td></tr>`).join('')
+    : `<tr><td colspan="4" class="empty">Sin registros este mes</td></tr>`;
+}
+
+/* ======================= UTILS ======================= */
+function val(id){ return document.getElementById(id).value.trim(); }
+function numval(id){ return Number(document.getElementById(id).value)||0; }
+function setStatus(id, msg, isError){
+  const el = document.getElementById(id);
+  el.textContent = msg;
+  el.style.color = isError ? '#dc2626' : '#16a34a';
+  setTimeout(()=>{ el.textContent=''; }, 3000);
+}
+
+/* ======================= BOOT ======================= */
+async function boot(){
+  fillMachineSelect(document.getElementById('f-maquina'));
+  fillMachineSelect(document.getElementById('p-maquina'));
+  fillMachineSelect(document.getElementById('r-maquina'));
+  fillMonthSelect(document.getElementById('r-mes'));
+  fillMonthSelect(document.getElementById('rk-mes'));
+  fillMonthSelect(document.getElementById('rt-mes'));
+  fillMonthSelect(document.getElementById('rc-mes'));
+  const today = new Date();
+  ['f-fecha','k-fecha','p-fecha','t-fecha','c-fecha'].forEach(id=>{
+    document.getElementById(id).value = today.toISOString().slice(0,10);
+  });
+  document.getElementById('r-mes').value = today.getMonth()+1;
+  document.getElementById('rk-mes').value = today.getMonth()+1;
+  document.getElementById('rt-mes').value = today.getMonth()+1;
+  document.getElementById('rc-mes').value = today.getMonth()+1;
+
+  await loadAll();
+  renderMaquinasTable();
+  renderKitTable();
+  renderParoTable();
+  renderTarimasTable();
+  renderContenedoresTable();
+}
+boot();
+</script>
+</body>
+</html>
