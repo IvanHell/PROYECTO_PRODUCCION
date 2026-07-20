@@ -1,22 +1,24 @@
 /* ===================================================================
-   PANEL DE PRODUCCIÓN — MÁQUINAS VALLE
+   PANEL DE PRODUCCIÓN — MÁQUINAS VALLE (v2)
    Todos los JavaScript en un solo archivo
+   Incluye: Máquinas, Manuales, Paro, Tarimas, Contenedores + Excel
    =================================================================== */
 
 /* ======================= CONFIGURACIÓN ======================= */
 
 const MACHINES = [
-    { id: 'FLEXO', label: 'Flexo', piezasMin: 26, ajuste: 30, flexo: true },
-    { id: 'ROLADORA', label: 'Roladora I', piezasMin: 10, ajuste: 15 },
-    { id: 'RANURADORA', label: 'Ranuradora', piezasMin: 37, ajuste: 35 },
-    { id: 'T_ROTATIVA', label: 'Troqueladora Rotativa', piezasMin: 35, ajuste: 50 },
-    { id: 'CAIMAN', label: 'Caimán', piezasMin: 5, ajuste: 15 },
-    { id: 'PEGADORA', label: 'Semiautomática (Pegadora)', piezasMin: 80, ajuste: 30 },
-    { id: 'T_PLANA', label: 'Troqueladora Plana', piezasMin: 35, ajuste: 50 },
-    { id: 'ARMADORA_REJILLAS', label: 'Máquina Armadora (Armadora de Rejillas)', piezasMin: 26, ajuste: 30 },
+    { id: 'FLEXO', label: 'Flexo', piezasMin: 26, ajuste: 30, flexo: true, aliases: ['FLEXO'] },
+    { id: 'ROLADORA', label: 'Roladora I', piezasMin: 10, ajuste: 15, aliases: ['ROLADORA', 'ROLADORA I'] },
+    { id: 'RANURADORA', label: 'Ranuradora', piezasMin: 37, ajuste: 35, aliases: ['RANURADORA'] },
+    { id: 'T_ROTATIVA', label: 'Troqueladora Rotativa', piezasMin: 35, ajuste: 50, aliases: ['T. ROTATIVA', 'T . ROTATIVA', 'TROQUELADORA ROTATIVA'] },
+    { id: 'CAIMAN', label: 'Caimán', piezasMin: 5, ajuste: 15, aliases: ['CAIMAN', 'CAIMÁN'] },
+    { id: 'PEGADORA', label: 'Semiautomática (Pegadora)', piezasMin: 80, ajuste: 30, aliases: ['PEGADORA', 'SEMIAUTOMATICA', 'SEMIAUTOMÁTICA'] },
+    { id: 'T_PLANA', label: 'Troqueladora Plana', piezasMin: 35, ajuste: 50, aliases: ['T. PLANA', 'TROQ. PLANA', 'TROQUELADORA PLANA'] },
+    { id: 'ARMADORA_REJILLAS', label: 'Máquina Armadora (Armadora de Rejillas)', piezasMin: 26, ajuste: 30, aliases: ['ARMADORA DE REJILLAS', 'MAQUINA ARMADORA', 'MÁQUINA ARMADORA'] },
 ];
 
-const DIAS = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+const OPERACIONES = ['DESPIQUE', 'ARMADO', 'CORTE', 'GRAPADO', 'PEGADO', 'ENSAMBLE', 'DOBLADO', 'CONTEO', 'SELLADO', 'AMARRADO', 'TARIMA'];
+
 const DIAS_ABR = ['D', 'L', 'M', 'MI', 'J', 'V', 'S'];
 const MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
 
@@ -24,6 +26,15 @@ const MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', '
 
 function machineById(id) {
     return MACHINES.find(m => m.id === id);
+}
+
+function normalizeMachine(raw) {
+    if (!raw) return null;
+    const clean = String(raw).trim().toUpperCase().replace(/\s+/g, ' ');
+    for (const m of MACHINES) {
+        if (m.aliases.some(a => a.toUpperCase() === clean)) return m.id;
+    }
+    return null;
 }
 
 function defaultTiempoDisponible(machineId, dateStr) {
@@ -34,6 +45,24 @@ function defaultTiempoDisponible(machineId, dateStr) {
     if (dow === 0 || dow === 6) return 0;
     if (dow === 2) return 600;
     return 570;
+}
+
+function pad2(n) {
+    return String(n).padStart(2, '0');
+}
+
+function toISODate(d) {
+    return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+}
+
+function parseExcelDate(v) {
+    if (v instanceof Date) return toISODate(v);
+    if (typeof v === 'number') {
+        const d = XLSX.SSF.parse_date_code(v);
+        return d ? `${d.y}-${pad2(d.m)}-${pad2(d.d)}` : '';
+    }
+    if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}/.test(v)) return v.slice(0, 10);
+    return '';
 }
 
 function uid() {
@@ -84,7 +113,7 @@ async function saveObj(key, obj) {
 
 const DB = {
     maquinas: [],
-    kit: [],
+    manuales: [],
     paro: [],
     tarimas: [],
     contenedores: [],
@@ -93,7 +122,7 @@ const DB = {
 
 async function loadAll() {
     DB.maquinas = await loadArr('entries-maquinas');
-    DB.kit = await loadArr('entries-kit');
+    DB.manuales = await loadArr('entries-manuales');
     DB.paro = await loadArr('entries-paro');
     DB.tarimas = await loadArr('entries-tarimas');
     DB.contenedores = await loadArr('entries-contenedores');
@@ -119,7 +148,7 @@ function setStatus(id, msg, isError = false) {
     el.style.color = isError ? '#dc2626' : '#16a34a';
     setTimeout(() => {
         el.textContent = '';
-    }, 3000);
+    }, 4000);
 }
 
 function getToday() {
@@ -153,6 +182,11 @@ function sum(arr, prop) {
     return arr.reduce((s, e) => s + (Number(e[prop]) || 0), 0);
 }
 
+function opsSummary(ops) {
+    if (!ops) return '';
+    return OPERACIONES.filter(op => ops[op]).join(', ');
+}
+
 /* ======================= UI HELPERS ======================= */
 
 function fillMachineSelect(sel) {
@@ -167,6 +201,21 @@ function fillMonthSelect(sel) {
     if (!select) return;
     select.innerHTML = MESES.map((m, i) => `<option value="${i + 1}">${m}</option>`).join('');
 }
+
+function buildChecklist() {
+    const el = document.getElementById('m-checklist');
+    if (!el) return;
+    el.innerHTML = OPERACIONES.map(op =>
+        `<label class="check-item"><input type="checkbox" class="m-op" value="${op}" onchange="window.updateSubProc()"> ${op}</label>`
+    ).join('');
+}
+
+function updateSubProc() {
+    const n = document.querySelectorAll('.m-op:checked').length;
+    const el = document.getElementById('m-subproc');
+    if (el) el.value = n;
+}
+window.updateSubProc = updateSubProc;
 
 function setupTabs() {
     document.querySelectorAll('.tab-btn').forEach(btn => {
@@ -194,8 +243,8 @@ function setupTabs() {
 }
 
 function setDateInputs() {
-    const today = getToday();
-    ['f-fecha', 'k-fecha', 'p-fecha', 't-fecha', 'c-fecha'].forEach(id => {
+    const today = toISODate(new Date());
+    ['f-fecha', 'm-fecha', 'p-fecha', 't-fecha', 'c-fecha'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.value = today;
     });
@@ -203,10 +252,21 @@ function setDateInputs() {
 
 function setMonthSelects() {
     const month = getCurrentMonth();
-    ['r-mes', 'rk-mes', 'rt-mes', 'rc-mes'].forEach(id => {
+    ['r-mes', 'rk-mes', 'rm-mes', 'rt-mes', 'rc-mes'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.value = month;
     });
+}
+
+/* ================================================================
+   EXCEL IMPORT / EXPORT
+   ================================================================ */
+
+function downloadExcel(dataArrayOfObjects, filename, sheetName) {
+    const ws = XLSX.utils.json_to_sheet(dataArrayOfObjects);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, (sheetName || 'Hoja1').slice(0, 31));
+    XLSX.writeFile(wb, filename);
 }
 
 /* ================================================================
@@ -230,28 +290,34 @@ function renderMaquinasTable() {
                 <td>${e.cant || 0}</td>
                 <td>${e.tiempo || 0}</td>
                 <td class="left">${e.comentarios || ''}</td>
-                <td><button class="btn small danger" onclick="deleteMaquinaEntry('${e.id}')">Borrar</button></td>
+                <td><button class="btn small danger" onclick="window.deleteMaquinaEntry('${e.id}')">Borrar</button></td>
             </tr>
         `).join('') :
         `<tr><td colspan="10" class="empty">Sin registros aún</td></tr>`;
 }
 
-function renderKitTable() {
-    const t = document.getElementById('tbl-kit');
-    const rows = [...DB.kit].sort((a, b) => b.fecha.localeCompare(a.fecha));
+function renderManualesTable() {
+    const t = document.getElementById('tbl-manuales');
+    const rows = [...DB.manuales].sort((a, b) => b.fecha.localeCompare(a.fecha));
     t.querySelector('thead').innerHTML =
-        `<tr><th>Fecha</th><th>Personal</th><th>NP KIT</th><th>Cantidad</th><th></th></tr>`;
+        `<tr><th>Fecha</th><th>Producto</th><th>NP</th><th>Operador</th><th>RRHH</th><th>Cant.</th><th>Tiempo</th><th>Operaciones</th><th>Sub Proc</th><th>Comentarios</th><th></th></tr>`;
     t.querySelector('tbody').innerHTML = rows.length ?
         rows.map(e => `
             <tr>
                 <td>${e.fecha}</td>
-                <td class="left">${e.personal || ''}</td>
-                <td class="left">${e.np || ''}</td>
+                <td class="left">${e.producto || ''}</td>
+                <td>${e.np || ''}</td>
+                <td class="left">${e.operador || ''}</td>
+                <td>${e.rrhh || 0}</td>
                 <td>${e.cant || 0}</td>
-                <td><button class="btn small danger" onclick="deleteKitEntry('${e.id}')">Borrar</button></td>
+                <td>${e.tiempo || 0}</td>
+                <td class="left">${opsSummary(e.ops)}</td>
+                <td>${e.subproc || 0}</td>
+                <td class="left">${e.comentarios || ''}</td>
+                <td><button class="btn small danger" onclick="window.deleteManualEntry('${e.id}')">Borrar</button></td>
             </tr>
         `).join('') :
-        `<tr><td colspan="5" class="empty">Sin registros aún</td></tr>`;
+        `<tr><td colspan="11" class="empty">Sin registros aún</td></tr>`;
 }
 
 function renderParoTable() {
@@ -266,7 +332,7 @@ function renderParoTable() {
                 <td class="left">${machineById(e.maquina)?.label || e.maquina}</td>
                 <td>${e.minutos || 0}</td>
                 <td class="left">${e.motivo || ''}</td>
-                <td><button class="btn small danger" onclick="deleteParoEntry('${e.id}')">Borrar</button></td>
+                <td><button class="btn small danger" onclick="window.deleteParoEntry('${e.id}')">Borrar</button></td>
             </tr>
         `).join('') :
         `<tr><td colspan="5" class="empty">Sin registros aún</td></tr>`;
@@ -284,7 +350,7 @@ function renderTarimasTable() {
                 <td class="left">${e.persona || ''}</td>
                 <td class="left">${e.tipo || ''}</td>
                 <td>${e.cant || 0}</td>
-                <td><button class="btn small danger" onclick="deleteTarimaEntry('${e.id}')">Borrar</button></td>
+                <td><button class="btn small danger" onclick="window.deleteTarimaEntry('${e.id}')">Borrar</button></td>
             </tr>
         `).join('') :
         `<tr><td colspan="5" class="empty">Sin registros aún</td></tr>`;
@@ -302,7 +368,7 @@ function renderContenedoresTable() {
                 <td class="left">${e.turno || ''}</td>
                 <td>${e.personas || 0}</td>
                 <td>${e.cant || 0}</td>
-                <td><button class="btn small danger" onclick="deleteContenedorEntry('${e.id}')">Borrar</button></td>
+                <td><button class="btn small danger" onclick="window.deleteContenedorEntry('${e.id}')">Borrar</button></td>
             </tr>
         `).join('') :
         `<tr><td colspan="5" class="empty">Sin registros aún</td></tr>`;
@@ -346,31 +412,149 @@ async function deleteMaquinaEntry(id) {
     renderMaquinasTable();
 }
 
-// ===== KIT =====
-
-async function addKitEntry() {
-    const fecha = val('k-fecha');
-    if (!fecha) {
-        setStatus('status-kit', 'La fecha es obligatoria.', true);
-        return;
-    }
-    DB.kit.push({
-        id: uid(),
-        fecha,
-        personal: val('k-personal'),
-        np: val('k-np'),
-        cant: numval('k-cant')
+async function handleImportMaquinas(file) {
+    if (!file) return;
+    const buf = await file.arrayBuffer();
+    const wb = XLSX.read(buf, { type: 'array', cellDates: true });
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const json = XLSX.utils.sheet_to_json(ws, { defval: null });
+    let imported = 0,
+        ignored = 0;
+    json.forEach(row => {
+        const fecha = parseExcelDate(row['FECHA']);
+        const maquinaId = normalizeMachine(row['MAQUINA']);
+        if (!fecha || !maquinaId) {
+            if (row['FECHA']) ignored++;
+            return;
+        }
+        DB.maquinas.push({
+            id: uid(),
+            fecha,
+            maquina: maquinaId,
+            producto: row['PRODUCTO'] || '',
+            np: String(row['NP'] ?? ''),
+            operador: row['OPERADOR'] || '',
+            rrhh: Number(row['RRHH']) || 0,
+            cant: Number(row['CANT PROD']) || 0,
+            tiempo: Number(row['TIEMPO']) || 0,
+            comentarios: row['COMENTARIOS'] || ''
+        });
+        imported++;
     });
-    await saveArr('entries-kit', DB.kit);
-    ['k-personal', 'k-np', 'k-cant'].forEach(id => document.getElementById(id).value = '');
-    setStatus('status-kit', 'Guardado ✓');
-    renderKitTable();
+    await saveArr('entries-maquinas', DB.maquinas);
+    renderMaquinasTable();
+    document.getElementById('import-maquinas').value = '';
+    setStatus('status-maquinas', `Importados ${imported} registros (${ignored} ignorados).`);
 }
 
-async function deleteKitEntry(id) {
-    DB.kit = DB.kit.filter(e => e.id !== id);
-    await saveArr('entries-kit', DB.kit);
-    renderKitTable();
+function exportMaquinas() {
+    const data = DB.maquinas.map(e => ({
+        FECHA: e.fecha,
+        MAQUINA: machineById(e.maquina)?.label || e.maquina,
+        PRODUCTO: e.producto,
+        NP: e.np,
+        OPERADOR: e.operador,
+        RRHH: e.rrhh,
+        'CANT PROD': e.cant,
+        TIEMPO: e.tiempo,
+        COMENTARIOS: e.comentarios
+    }));
+    downloadExcel(data, 'produccion_maquinas.xlsx', 'PRODUCCION');
+}
+
+// ===== MANUALES =====
+
+async function addManualEntry() {
+    const fecha = val('m-fecha');
+    if (!fecha) {
+        setStatus('status-manuales', 'La fecha es obligatoria.', true);
+        return;
+    }
+    const ops = {};
+    OPERACIONES.forEach(op => {
+        const cb = document.querySelector(`.m-op[value="${op}"]`);
+        ops[op] = cb && cb.checked ? 1 : 0;
+    });
+    const subproc = Object.values(ops).reduce((a, b) => a + b, 0);
+    DB.manuales.push({
+        id: uid(),
+        fecha,
+        producto: val('m-producto'),
+        np: val('m-np'),
+        operador: val('m-operador'),
+        rrhh: numval('m-rrhh'),
+        cant: numval('m-cant'),
+        tiempo: numval('m-tiempo'),
+        ops,
+        subproc,
+        comentarios: val('m-comentarios')
+    });
+    await saveArr('entries-manuales', DB.manuales);
+    ['m-producto', 'm-np', 'm-operador', 'm-rrhh', 'm-cant', 'm-tiempo', 'm-comentarios']
+        .forEach(id => document.getElementById(id).value = '');
+    document.querySelectorAll('.m-op').forEach(cb => cb.checked = false);
+    document.getElementById('m-subproc').value = '';
+    setStatus('status-manuales', 'Guardado ✓');
+    renderManualesTable();
+}
+
+async function deleteManualEntry(id) {
+    DB.manuales = DB.manuales.filter(e => e.id !== id);
+    await saveArr('entries-manuales', DB.manuales);
+    renderManualesTable();
+}
+
+async function handleImportManuales(file) {
+    if (!file) return;
+    const buf = await file.arrayBuffer();
+    const wb = XLSX.read(buf, { type: 'array', cellDates: true });
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const json = XLSX.utils.sheet_to_json(ws, { defval: null });
+    let imported = 0;
+    json.forEach(row => {
+        const fecha = parseExcelDate(row['FECHA']);
+        if (!fecha) return;
+        const ops = {};
+        OPERACIONES.forEach(op => { ops[op] = (row[op] == 1 || row[op] === '1') ? 1 : 0; });
+        const subproc = Object.values(ops).reduce((a, b) => a + b, 0);
+        DB.manuales.push({
+            id: uid(),
+            fecha,
+            producto: row['PRODUCTO'] || '',
+            np: String(row['NP'] ?? ''),
+            operador: row['OPERADOR'] || '',
+            rrhh: Number(row['RRHH']) || 0,
+            cant: Number(row['CANT PROD']) || 0,
+            tiempo: Number(row['TIEMPO']) || 0,
+            ops,
+            subproc,
+            comentarios: row['COMENTARIOS'] || ''
+        });
+        imported++;
+    });
+    await saveArr('entries-manuales', DB.manuales);
+    renderManualesTable();
+    document.getElementById('import-manuales').value = '';
+    setStatus('status-manuales', `Importados ${imported} registros.`);
+}
+
+function exportManuales() {
+    const data = DB.manuales.map(e => {
+        const row = {
+            FECHA: e.fecha,
+            PRODUCTO: e.producto,
+            NP: e.np,
+            OPERADOR: e.operador,
+            RRHH: e.rrhh,
+            'CANT PROD': e.cant,
+            TIEMPO: e.tiempo
+        };
+        OPERACIONES.forEach(op => row[op] = (e.ops && e.ops[op]) ? 1 : '');
+        row['SUB PROC'] = e.subproc || 0;
+        row['COMENTARIOS'] = e.comentarios;
+        return row;
+    });
+    downloadExcel(data, 'produccion_manuales.xlsx', 'PRODUCCION');
 }
 
 // ===== PARO =====
@@ -459,6 +643,12 @@ async function deleteContenedorEntry(id) {
    RESÚMENES
    ================================================================ */
 
+let lastResumenMaquinaRows = [];
+let lastResumenKitRows = [];
+let lastResumenManualesRows = [];
+let lastResumenTarimasRows = [];
+let lastResumenContenedoresRows = [];
+
 // ===== RESUMEN: MÁQUINAS =====
 
 async function renderResumenMaquina() {
@@ -475,9 +665,10 @@ async function renderResumenMaquina() {
         sumPct = 0,
         nPct = 0;
     const rowsHtml = [];
+    lastResumenMaquinaRows = [];
 
     for (let d = 1; d <= diasEnMes; d++) {
-        const fecha = `${anio}-${String(mes).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+        const fecha = `${anio}-${pad2(mes)}-${pad2(d)}`;
         const dow = getDayOfWeek(fecha);
         const entriesDia = DB.maquinas.filter(e => e.fecha === fecha && e.maquina === maquina);
         const produccion = sum(entriesDia, 'cant');
@@ -515,7 +706,7 @@ async function renderResumenMaquina() {
         rowsHtml.push(`<tr>
             <td>${DIAS_ABR[dow]}</td>
             <td>${fecha}</td>
-            <td><input type="number" style="width:70px" value="${tiempoDisp}" onchange="updateTiempoOverride('${maquina}','${fecha}',this.value)"></td>
+            <td><input type="number" style="width:70px" value="${tiempoDisp}" onchange="window.updateTiempoOverride('${maquina}','${fecha}',this.value)"></td>
             <td>${produccion}</td>
             <td>${partidas}</td>
             <td>${real ? real.toFixed(2) : '-'}</td>
@@ -524,6 +715,19 @@ async function renderResumenMaquina() {
             <td>${paroMin || ''}</td>
             <td class="left">${motivos}</td>
         </tr>`);
+
+        lastResumenMaquinaRows.push({
+            DIA: DIAS_ABR[dow],
+            FECHA: fecha,
+            'TIEMPO DISPONIBLE': tiempoNum,
+            PRODUCCION: produccion,
+            PARTIDAS: partidas,
+            REAL: Number(real.toFixed(2)),
+            ESPERADO: Number(esperado.toFixed(2)),
+            '%': Math.round(pct * 100),
+            'PARO (MIN)': paroMin,
+            MOTIVOS: motivos
+        });
     }
 
     const t = document.getElementById('tbl-resumen-maquina');
@@ -550,13 +754,32 @@ async function updateTiempoOverride(maquina, fecha, value) {
     renderResumenMaquina();
 }
 
-// ===== RESUMEN: KIT =====
+function exportResumenMaquina() {
+    if (!lastResumenMaquinaRows.length) { alert('Genera el resumen primero.'); return; }
+    const maquina = machineById(val('r-maquina'))?.label || 'maquina';
+    downloadExcel(lastResumenMaquinaRows,
+        `resumen_${maquina.replace(/\s+/g, '_')}_${val('r-mes')}_${val('r-anio')}.xlsx`,
+        'RESUMEN');
+}
+
+// ===== RESUMEN: KIT (derivado de Manuales) =====
 
 function renderResumenKit() {
     const mes = parseInt(val('rk-mes'), 10);
     const anio = parseInt(val('rk-anio'), 10);
-    const rows = filterByMonthYear(DB.kit, mes, anio).sort((a, b) => a.fecha.localeCompare(b.fecha));
+    const rows = DB.manuales.filter(e => {
+        if ((e.producto || '').trim().toUpperCase() !== 'KIT') return false;
+        const d = parseDate(e.fecha);
+        return d.getFullYear() === anio && (d.getMonth() + 1) === mes;
+    }).sort((a, b) => a.fecha.localeCompare(b.fecha));
+
     const total = sum(rows, 'cant');
+    lastResumenKitRows = rows.map(e => ({
+        FECHA: e.fecha,
+        PERSONAL: e.operador,
+        'NP KIT': e.np,
+        CANTIDAD: e.cant
+    }));
 
     const t = document.getElementById('tbl-resumen-kit');
     t.querySelector('thead').innerHTML =
@@ -565,13 +788,71 @@ function renderResumenKit() {
         rows.map(e => `
             <tr>
                 <td>${e.fecha}</td>
-                <td class="left">${e.personal || ''}</td>
+                <td class="left">${e.operador || ''}</td>
                 <td class="left">${e.np || ''}</td>
                 <td>${e.cant || 0}</td>
             </tr>
         `).join('') :
         `<tr><td colspan="4" class="empty">Sin registros este mes</td></tr>`) +
         `<tr class="totals"><td colspan="3">Total del mes</td><td>${total}</td></tr>`;
+}
+
+function exportResumenKit() {
+    if (!lastResumenKitRows.length) { alert('Genera el resumen primero.'); return; }
+    downloadExcel(lastResumenKitRows, `resumen_kit_${val('rk-mes')}_${val('rk-anio')}.xlsx`, 'ENSAMBLE KITS');
+}
+
+// ===== RESUMEN: MANUALES (general) =====
+
+function renderResumenManuales() {
+    const mes = parseInt(val('rm-mes'), 10);
+    const anio = parseInt(val('rm-anio'), 10);
+    const filtroProd = val('rm-producto').toUpperCase();
+
+    const rows = DB.manuales.filter(e => {
+        const d = parseDate(e.fecha);
+        if (d.getFullYear() !== anio || (d.getMonth() + 1) !== mes) return false;
+        if (filtroProd && (e.producto || '').toUpperCase() !== filtroProd) return false;
+        return true;
+    }).sort((a, b) => a.fecha.localeCompare(b.fecha));
+
+    lastResumenManualesRows = rows.map(e => ({
+        FECHA: e.fecha,
+        PRODUCTO: e.producto,
+        NP: e.np,
+        OPERADOR: e.operador,
+        RRHH: e.rrhh,
+        'CANT PROD': e.cant,
+        OPERACIONES: opsSummary(e.ops),
+        'SUB PROC': e.subproc
+    }));
+
+    const totalCant = sum(rows, 'cant');
+    const t = document.getElementById('tbl-resumen-manuales');
+    t.querySelector('thead').innerHTML =
+        `<tr><th>Fecha</th><th>Producto</th><th>NP</th><th>Operador</th><th>RRHH</th><th>Cant. Prod.</th><th>Operaciones</th><th>Sub Proc</th></tr>`;
+    t.querySelector('tbody').innerHTML = (rows.length ?
+        rows.map(e => `
+            <tr>
+                <td>${e.fecha}</td>
+                <td class="left">${e.producto || ''}</td>
+                <td>${e.np || ''}</td>
+                <td class="left">${e.operador || ''}</td>
+                <td>${e.rrhh || 0}</td>
+                <td>${e.cant || 0}</td>
+                <td class="left">${opsSummary(e.ops)}</td>
+                <td>${e.subproc || 0}</td>
+            </tr>
+        `).join('') :
+        `<tr><td colspan="8" class="empty">Sin registros este mes</td></tr>`) +
+        `<tr class="totals"><td colspan="5">Total</td><td>${totalCant}</td><td colspan="2"></td></tr>`;
+}
+
+function exportResumenManuales() {
+    if (!lastResumenManualesRows.length) { alert('Genera el resumen primero.'); return; }
+    downloadExcel(lastResumenManualesRows,
+        `resumen_manuales_${val('rm-mes')}_${val('rm-anio')}.xlsx`,
+        'MANUALES');
 }
 
 // ===== RESUMEN: TARIMAS =====
@@ -587,16 +868,28 @@ function renderResumenTarimas() {
         porPersona[key] = (porPersona[key] || 0) + (Number(e.cant) || 0);
     });
 
+    const entries = Object.entries(porPersona);
+    lastResumenTarimasRows = entries.map(([k, v]) => {
+        const [persona, tipo] = k.split(' | ');
+        return { PERSONA: persona, TIPO: tipo, TOTAL: v };
+    });
+
     const t = document.getElementById('tbl-resumen-tarimas');
     t.querySelector('thead').innerHTML =
         `<tr><th>Persona</th><th>Tipo</th><th>Total del mes</th></tr>`;
-    const entries = Object.entries(porPersona);
     t.querySelector('tbody').innerHTML = entries.length ?
         entries.map(([k, v]) => {
             const [persona, tipo] = k.split(' | ');
             return `<tr><td class="left">${persona}</td><td class="left">${tipo}</td><td>${v}</td></tr>`;
         }).join('') :
         `<tr><td colspan="3" class="empty">Sin registros este mes</td></tr>`;
+}
+
+function exportResumenTarimas() {
+    if (!lastResumenTarimasRows.length) { alert('Genera el resumen primero.'); return; }
+    downloadExcel(lastResumenTarimasRows,
+        `resumen_tarimas_${val('rt-mes')}_${val('rt-anio')}.xlsx`,
+        'TARIMAS');
 }
 
 // ===== RESUMEN: CONTENEDORES =====
@@ -614,10 +907,17 @@ function renderResumenContenedores() {
         porTurno[key].cant += Number(e.cant) || 0;
     });
 
+    const entries = Object.entries(porTurno);
+    lastResumenContenedoresRows = entries.map(([k, v]) => ({
+        TURNO: k,
+        PERSONAS: v.personas,
+        CONTENEDORES: v.cant,
+        'CONTENEDORES/PERSONA-DIA': v.personas ? Number((v.cant / v.personas).toFixed(2)) : 0
+    }));
+
     const t = document.getElementById('tbl-resumen-contenedores');
     t.querySelector('thead').innerHTML =
         `<tr><th>Turno</th><th>Personas (suma)</th><th>Contenedores (total)</th><th>Contenedores / persona-día</th></tr>`;
-    const entries = Object.entries(porTurno);
     t.querySelector('tbody').innerHTML = entries.length ?
         entries.map(([k, v]) => `
             <tr>
@@ -628,6 +928,13 @@ function renderResumenContenedores() {
             </tr>
         `).join('') :
         `<tr><td colspan="4" class="empty">Sin registros este mes</td></tr>`;
+}
+
+function exportResumenContenedores() {
+    if (!lastResumenContenedoresRows.length) { alert('Genera el resumen primero.'); return; }
+    downloadExcel(lastResumenContenedoresRows,
+        `resumen_contenedores_${val('rc-mes')}_${val('rc-anio')}.xlsx`,
+        'CONTENEDORES');
 }
 
 /* ================================================================
@@ -641,9 +948,11 @@ async function boot() {
     fillMachineSelect('r-maquina');
     fillMonthSelect('r-mes');
     fillMonthSelect('rk-mes');
+    fillMonthSelect('rm-mes');
     fillMonthSelect('rt-mes');
     fillMonthSelect('rc-mes');
 
+    buildChecklist();
     setDateInputs();
     setMonthSelects();
     setupTabs();
@@ -653,36 +962,63 @@ async function boot() {
 
     // Renderizar tablas
     renderMaquinasTable();
-    renderKitTable();
+    renderManualesTable();
     renderParoTable();
     renderTarimasTable();
     renderContenedoresTable();
 }
 
-// ================================================================
-// EXPONER FUNCIONES AL ÁMBITO GLOBAL (para onclick en HTML)
-// ================================================================
+/* ================================================================
+   EXPONER FUNCIONES AL ÁMBITO GLOBAL (para onclick en HTML)
+   ================================================================ */
 
+// Captura - Máquinas
 window.addMaquinaEntry = addMaquinaEntry;
 window.deleteMaquinaEntry = deleteMaquinaEntry;
-window.addKitEntry = addKitEntry;
-window.deleteKitEntry = deleteKitEntry;
+window.handleImportMaquinas = handleImportMaquinas;
+window.exportMaquinas = exportMaquinas;
+
+// Captura - Manuales
+window.addManualEntry = addManualEntry;
+window.deleteManualEntry = deleteManualEntry;
+window.handleImportManuales = handleImportManuales;
+window.exportManuales = exportManuales;
+
+// Captura - Paro
 window.addParoEntry = addParoEntry;
 window.deleteParoEntry = deleteParoEntry;
+
+// Captura - Tarimas
 window.addTarimaEntry = addTarimaEntry;
 window.deleteTarimaEntry = deleteTarimaEntry;
+
+// Captura - Contenedores
 window.addContenedorEntry = addContenedorEntry;
 window.deleteContenedorEntry = deleteContenedorEntry;
 
+// Resúmenes
 window.renderResumenMaquina = renderResumenMaquina;
 window.updateTiempoOverride = updateTiempoOverride;
-window.renderResumenKit = renderResumenKit;
-window.renderResumenTarimas = renderResumenTarimas;
-window.renderResumenContenedores = renderResumenContenedores;
+window.exportResumenMaquina = exportResumenMaquina;
 
-// ================================================================
-// INICIAR APLICACIÓN
-// ================================================================
+window.renderResumenKit = renderResumenKit;
+window.exportResumenKit = exportResumenKit;
+
+window.renderResumenManuales = renderResumenManuales;
+window.exportResumenManuales = exportResumenManuales;
+
+window.renderResumenTarimas = renderResumenTarimas;
+window.exportResumenTarimas = exportResumenTarimas;
+
+window.renderResumenContenedores = renderResumenContenedores;
+window.exportResumenContenedores = exportResumenContenedores;
+
+// UI
+window.updateSubProc = updateSubProc;
+
+/* ================================================================
+   INICIAR APLICACIÓN
+   ================================================================ */
 
 boot();
 

@@ -4,13 +4,14 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Panel de Producción — Máquinas VALLE</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <link rel="stylesheet" href="css/styles.css">
 </head>
 <body>
     <!-- HEADER -->
     <header>
         <h1>Panel de Producción — Máquinas VALLE</h1>
-        <p>Captura una sola vez, obtén los resúmenes automáticamente.</p>
+        <p>Captura una sola vez, obtén los resúmenes automáticamente. Reemplaza los archivos alimentadores y el reporte final.</p>
     </header>
 
     <div class="wrap">
@@ -23,24 +24,23 @@
         <!-- ===================== PANEL CAPTURA ===================== -->
         <div class="panel active" id="panel-captura">
             <div class="subtabs">
-                <button class="subtab-btn active" data-sub="cap-maquinas">Producción Máquinas</button>
-                <button class="subtab-btn" data-sub="cap-kit">Ensamble KIT</button>
-                <button class="subtab-btn" data-sub="cap-paro">Tiempos de Paro</button>
-                <button class="subtab-btn" data-sub="cap-tarimas">Tarimas</button>
-                <button class="subtab-btn" data-sub="cap-contenedores">Contenedores</button>
+                <button class="subtab-btn active" data-sub="cap-maquinas"> Producción Máquinas</button>
+                <button class="subtab-btn" data-sub="cap-manuales"> Producción Manuales</button>
+                <button class="subtab-btn" data-sub="cap-tarimas"> Tarimas</button>
+                <button class="subtab-btn" data-sub="cap-contenedores"> Contenedores</button>
             </div>
 
-            <!-- Subpanel: Máquinas -->
+            <!-- ========================================================== -->
+            <!-- SUBPANEL: MÁQUINAS (incluye Producción + Paro) -->
+            <!-- ========================================================== -->
             <div class="subpanel active" id="cap-maquinas">
+
+                <!-- --- PRODUCCIÓN MÁQUINAS --- -->
                 <div class="card">
-                    <h2>Nueva captura de producción</h2>
+                    <h2> Nueva captura de producción (Máquinas)</h2>
                     <div class="grid">
                         <div><label>Fecha</label><input type="date" id="f-fecha"></div>
-                        <div><label>Máquina</label>
-                            <select id="f-maquina">
-                                <option value="">Selecciona...</option>
-                            </select>
-                        </div>
+                        <div><label>Máquina</label><select id="f-maquina"><option value="">Selecciona...</option></select></div>
                         <div><label>Producto</label><input id="f-producto" placeholder="REJILLA, TAPA..."></div>
                         <div><label>Número de Parte (NP)</label><input id="f-np" placeholder="ej. 1500144B"></div>
                         <div><label>Operador(es)</label><input id="f-operador" placeholder="Nombres"></div>
@@ -49,68 +49,103 @@
                         <div><label>Tiempo trabajado (min, informativo)</label><input type="number" id="f-tiempo" min="0"></div>
                         <div style="grid-column:1/-1"><label>Comentarios</label><input id="f-comentarios"></div>
                     </div>
-                    <button class="btn" onclick="addMaquinaEntry()">Agregar registro</button>
-                    <span class="status" id="status-maquinas"></span>
+                    <div class="toolbar">
+                        <button class="btn" onclick="window.addMaquinaEntry()">Agregar registro</button>
+                        <span class="status" id="status-maquinas"></span>
+                    </div>
                 </div>
+
                 <div class="card">
-                    <h2>Registros capturados</h2>
+                    <div class="head-row">
+                        <h2>Registros de producción capturados</h2>
+                        <div class="toolbar">
+                            <button class="btn secondary small" onclick="document.getElementById('import-maquinas').click()">⬆ Importar Excel</button>
+                            <input type="file" id="import-maquinas" accept=".xlsx,.xls" onchange="window.handleImportMaquinas(this.files[0])">
+                            <button class="btn ghost small" onclick="window.exportMaquinas()">⬇ Exportar a Excel</button>
+                        </div>
+                    </div>
                     <div class="tablewrap"><table id="tbl-maquinas"><thead></thead><tbody></tbody></table></div>
                 </div>
-            </div>
 
-            <!-- Subpanel: Kit -->
-            <div class="subpanel" id="cap-kit">
-                <div class="card">
-                    <h2>Nueva captura de Ensamble KIT</h2>
-                    <div class="grid">
-                        <div><label>Fecha</label><input type="date" id="k-fecha"></div>
-                        <div><label>Personal</label><input id="k-personal" placeholder="Nombres"></div>
-                        <div><label>Número de Parte KIT</label><input id="k-np" placeholder="KIT SANHUA..."></div>
-                        <div><label>Cantidad Ensamblada</label><input type="number" id="k-cant" min="0"></div>
-                    </div>
-                    <button class="btn" onclick="addKitEntry()">Agregar registro</button>
-                    <span class="status" id="status-kit"></span>
-                </div>
-                <div class="card">
-                    <h2>Registros capturados</h2>
-                    <div class="tablewrap"><table id="tbl-kit"><thead></thead><tbody></tbody></table></div>
-                </div>
-            </div>
+                <!-- --- SEPARADOR --- -->
+                <hr style="margin:24px 0;border:1px dashed var(--line);">
 
-            <!-- Subpanel: Paro -->
-            <div class="subpanel" id="cap-paro">
+                <!-- --- TIEMPOS DE PARO --- -->
+                <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">
+                    <span style="font-size:18px;font-weight:bold;"> Tiempos de Paro</span>
+                    <span style="font-size:12px;color:var(--sub);">(Registros asociados a máquinas)</span>
+                </div>
+
                 <div class="card">
                     <h2>Nuevo tiempo de paro</h2>
                     <div class="grid">
                         <div><label>Fecha</label><input type="date" id="p-fecha"></div>
-                        <div><label>Máquina</label>
-                            <select id="p-maquina"><option value="">Selecciona...</option></select>
-                        </div>
+                        <div><label>Máquina</label><select id="p-maquina"><option value="">Selecciona...</option></select></div>
                         <div><label>Minutos de paro</label><input type="number" id="p-minutos" min="0"></div>
                         <div><label>Motivo</label><input id="p-motivo" placeholder="Falla mecánica, cambio de MP..."></div>
                     </div>
-                    <button class="btn" onclick="addParoEntry()">Agregar registro</button>
+                    <button class="btn" onclick="window.addParoEntry()">Agregar registro</button>
                     <span class="status" id="status-paro"></span>
                 </div>
+
                 <div class="card">
-                    <h2>Registros capturados</h2>
+                    <h2>Registros de paro capturados</h2>
                     <div class="tablewrap"><table id="tbl-paro"><thead></thead><tbody></tbody></table></div>
                 </div>
             </div>
 
-            <!-- Subpanel: Tarimas -->
+            <!-- ========================================================== -->
+            <!-- SUBPANEL: MANUALES -->
+            <!-- ========================================================== -->
+            <div class="subpanel" id="cap-manuales">
+                <div class="card">
+                    <h2>Nueva captura de producción (Manuales)</h2>
+                    <div class="grid">
+                        <div><label>Fecha</label><input type="date" id="m-fecha"></div>
+                        <div><label>Producto</label><input id="m-producto" placeholder="REJILLA, KIT, TAPA..."></div>
+                        <div><label>Número de Parte (NP)</label><input id="m-np"></div>
+                        <div><label>Operador</label><input id="m-operador" placeholder="Nombre"></div>
+                        <div><label>RRHH (personas)</label><input type="number" id="m-rrhh" min="0"></div>
+                        <div><label>Cantidad Producida</label><input type="number" id="m-cant" min="0"></div>
+                        <div><label>Tiempo (horas/min, informativo)</label><input type="number" step="0.1" id="m-tiempo" min="0"></div>
+                    </div>
+                    <label style="margin-top:12px">Operaciones realizadas (marca todas las que apliquen)</label>
+                    <div class="check-grid" id="m-checklist"></div>
+                    <div class="grid" style="margin-top:10px;grid-template-columns:1fr 2fr;">
+                        <div><label>Sub Proc. (automático)</label><input id="m-subproc" readonly style="background:#f8f9fb;font-weight:bold;"></div>
+                        <div><label>Comentarios</label><input id="m-comentarios"></div>
+                    </div>
+                    <div class="toolbar">
+                        <button class="btn" onclick="window.addManualEntry()">Agregar registro</button>
+                        <span class="status" id="status-manuales"></span>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="head-row">
+                        <h2>Registros capturados</h2>
+                        <div class="toolbar">
+                            <button class="btn secondary small" onclick="document.getElementById('import-manuales').click()">⬆ Importar Excel</button>
+                            <input type="file" id="import-manuales" accept=".xlsx,.xls" onchange="window.handleImportManuales(this.files[0])">
+                            <button class="btn ghost small" onclick="window.exportManuales()">⬇ Exportar a Excel</button>
+                        </div>
+                    </div>
+                    <div class="tablewrap"><table id="tbl-manuales"><thead></thead><tbody></tbody></table></div>
+                </div>
+            </div>
+
+            <!-- ========================================================== -->
+            <!-- SUBPANEL: TARIMAS -->
+            <!-- ========================================================== -->
             <div class="subpanel" id="cap-tarimas">
                 <div class="card">
                     <h2>Nueva captura de Tarimas</h2>
                     <div class="grid">
                         <div><label>Fecha</label><input type="date" id="t-fecha"></div>
                         <div><label>Persona</label><input id="t-persona" placeholder="José Reyes..."></div>
-                        <div><label>Tipo</label>
-                            <select id="t-tipo"><option>POLARIS</option><option>RECUPERADAS - USO INTERNO</option></select>
-                        </div>
+                        <div><label>Tipo</label><select id="t-tipo"><option>POLARIS</option><option>RECUPERADAS - USO INTERNO</option></select></div>
                         <div><label>Cantidad</label><input type="number" id="t-cant" min="0"></div>
                     </div>
-                    <button class="btn" onclick="addTarimaEntry()">Agregar registro</button>
+                    <button class="btn" onclick="window.addTarimaEntry()">Agregar registro</button>
                     <span class="status" id="status-tarimas"></span>
                 </div>
                 <div class="card">
@@ -119,19 +154,19 @@
                 </div>
             </div>
 
-            <!-- Subpanel: Contenedores -->
+            <!-- ========================================================== -->
+            <!-- SUBPANEL: CONTENEDORES -->
+            <!-- ========================================================== -->
             <div class="subpanel" id="cap-contenedores">
                 <div class="card">
                     <h2>Nueva captura de Contenedores</h2>
                     <div class="grid">
                         <div><label>Fecha</label><input type="date" id="c-fecha"></div>
-                        <div><label>Turno</label>
-                            <select id="c-turno"><option>1er Turno</option><option>2do Turno</option><option>Tiempo Extra</option></select>
-                        </div>
+                        <div><label>Turno</label><select id="c-turno"><option>1er Turno</option><option>2do Turno</option><option>Tiempo Extra</option></select></div>
                         <div><label>Personas</label><input type="number" id="c-personas" min="0"></div>
                         <div><label>Contenedores realizados</label><input type="number" id="c-cant" min="0"></div>
                     </div>
-                    <button class="btn" onclick="addContenedorEntry()">Agregar registro</button>
+                    <button class="btn" onclick="window.addContenedorEntry()">Agregar registro</button>
                     <span class="status" id="status-contenedores"></span>
                 </div>
                 <div class="card">
@@ -146,6 +181,7 @@
             <div class="subtabs">
                 <button class="subtab-btn active" data-sub="res-maquinas">Por Máquina</button>
                 <button class="subtab-btn" data-sub="res-kit">Ensamble KIT</button>
+                <button class="subtab-btn" data-sub="res-manuales">Manuales (general)</button>
                 <button class="subtab-btn" data-sub="res-tarimas">Tarimas</button>
                 <button class="subtab-btn" data-sub="res-contenedores">Contenedores</button>
             </div>
@@ -158,13 +194,14 @@
                         <div><label>Mes</label><select id="r-mes"></select></div>
                         <div><label>Año</label><input type="number" id="r-anio" value="2026"></div>
                     </div>
-                    <button class="btn secondary" onclick="renderResumenMaquina()">Generar resumen</button>
-                    <p class="note">El "Tiempo Disponible" se precarga con el horario estándar (Lun–Vie 570 min, Martes 600 min, Sáb/Dom 0). Para Flexo y para cualquier día con horas extra, edítalo directamente en la tabla — el turno real varía y no se puede adivinar.</p>
+                    <div class="toolbar">
+                        <button class="btn secondary" onclick="window.renderResumenMaquina()">Generar resumen</button>
+                        <button class="btn ghost" onclick="window.exportResumenMaquina()">⬇ Descargar Excel</button>
+                    </div>
+                    <p class="note">El "Tiempo Disponible" se precarga con el horario estándar (Lun–Vie 570 min, Martes 600 min, Sáb/Dom 0). Para Flexo y cualquier día con horas extra, edítalo en la tabla.</p>
                 </div>
                 <div class="kpi-grid" id="kpi-maquina"></div>
-                <div class="card">
-                    <div class="tablewrap"><table id="tbl-resumen-maquina"><thead></thead><tbody></tbody></table></div>
-                </div>
+                <div class="card"><div class="tablewrap"><table id="tbl-resumen-maquina"><thead></thead><tbody></tbody></table></div></div>
             </div>
 
             <!-- Resumen: Kit -->
@@ -174,9 +211,29 @@
                         <div><label>Mes</label><select id="rk-mes"></select></div>
                         <div><label>Año</label><input type="number" id="rk-anio" value="2026"></div>
                     </div>
-                    <button class="btn secondary" onclick="renderResumenKit()">Generar resumen</button>
+                    <div class="toolbar">
+                        <button class="btn secondary" onclick="window.renderResumenKit()">Generar resumen</button>
+                        <button class="btn ghost" onclick="window.exportResumenKit()">⬇ Descargar Excel</button>
+                    </div>
+                    <p class="note">Se calcula automáticamente a partir de los registros de Producción Manuales donde el producto es "KIT".</p>
                 </div>
                 <div class="card"><div class="tablewrap"><table id="tbl-resumen-kit"><thead></thead><tbody></tbody></table></div></div>
+            </div>
+
+            <!-- Resumen: Manuales -->
+            <div class="subpanel" id="res-manuales">
+                <div class="card">
+                    <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(150px,220px));">
+                        <div><label>Producto (opcional)</label><input id="rm-producto" placeholder="Todos"></div>
+                        <div><label>Mes</label><select id="rm-mes"></select></div>
+                        <div><label>Año</label><input type="number" id="rm-anio" value="2026"></div>
+                    </div>
+                    <div class="toolbar">
+                        <button class="btn secondary" onclick="window.renderResumenManuales()">Generar resumen</button>
+                        <button class="btn ghost" onclick="window.exportResumenManuales()">⬇ Descargar Excel</button>
+                    </div>
+                </div>
+                <div class="card"><div class="tablewrap"><table id="tbl-resumen-manuales"><thead></thead><tbody></tbody></table></div></div>
             </div>
 
             <!-- Resumen: Tarimas -->
@@ -186,7 +243,10 @@
                         <div><label>Mes</label><select id="rt-mes"></select></div>
                         <div><label>Año</label><input type="number" id="rt-anio" value="2026"></div>
                     </div>
-                    <button class="btn secondary" onclick="renderResumenTarimas()">Generar resumen</button>
+                    <div class="toolbar">
+                        <button class="btn secondary" onclick="window.renderResumenTarimas()">Generar resumen</button>
+                        <button class="btn ghost" onclick="window.exportResumenTarimas()">⬇ Descargar Excel</button>
+                    </div>
                 </div>
                 <div class="card"><div class="tablewrap"><table id="tbl-resumen-tarimas"><thead></thead><tbody></tbody></table></div></div>
             </div>
@@ -198,19 +258,16 @@
                         <div><label>Mes</label><select id="rc-mes"></select></div>
                         <div><label>Año</label><input type="number" id="rc-anio" value="2026"></div>
                     </div>
-                    <button class="btn secondary" onclick="renderResumenContenedores()">Generar resumen</button>
+                    <div class="toolbar">
+                        <button class="btn secondary" onclick="window.renderResumenContenedores()">Generar resumen</button>
+                        <button class="btn ghost" onclick="window.exportResumenContenedores()">⬇ Descargar Excel</button>
+                    </div>
                 </div>
                 <div class="card"><div class="tablewrap"><table id="tbl-resumen-contenedores"><thead></thead><tbody></tbody></table></div></div>
             </div>
         </div>
     </div>
 
-   <!--  <script src="js/config.js"></script>
-    <script src="js/storage.js"></script>
-    <script src="js/utils.js"></script>
-    <script src="js/ui.js"></script>
-    <script src="js/captura.js"></script>
-    <script src="js/resumen.js"></script>-->
-    <script src="js/app.js"></script> 
+    <script src="js/app.js"></script>
 </body>
 </html>
