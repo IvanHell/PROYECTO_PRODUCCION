@@ -3,14 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Panel de Producción — Máquinas VALLE 1.1 </title>
+    <title>Panel de Producción — Máquinas VALLE</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <link rel="stylesheet" href="css/styles.css">
 </head>
 <body>
     <!-- HEADER -->
     <header>
-        <h1>Panel de Producción — Máquinas VALLE</h1>
+        <h1>Panel de Producción — Máquinas VALLE 2.1 </h1>
         <p>Captura una sola vez, obtén los resúmenes automáticamente. Reemplaza los archivos alimentadores y el reporte final.</p>
     </header>
 
@@ -40,8 +40,8 @@
                     <h2> Nueva captura de producción (Máquinas)</h2>
                     <div class="grid">
                         <div><label>Fecha</label><input type="date" id="f-fecha"></div>
-                        <div><label>Máquina</label><select id="f-maquina"><option value="">Selecciona...</option></select></div>
-                        <div><label>Producto</label><input id="f-producto" placeholder="REJILLA, TAPA..."></div>
+                        <div><label>Máquina</label><select id="f-maquina" onchange="window.onMaquinaChange()"><option value="">Selecciona...</option></select></div>
+                        <div><label>Producto</label><input id="f-producto" list="producto-options" placeholder="Elige o escribe uno nuevo" autocomplete="off"></div>
                         <div><label>Número de Parte (NP)</label><input id="f-np" placeholder="ej. 1500144B"></div>
                         <div><label>Operador(es)</label><input id="f-operador" placeholder="Nombres"></div>
                         <div><label>RRHH (personas)</label><input type="number" id="f-rrhh" min="0"></div>
@@ -102,7 +102,7 @@
                     <h2>Nueva captura de producción (Manuales)</h2>
                     <div class="grid">
                         <div><label>Fecha</label><input type="date" id="m-fecha"></div>
-                        <div><label>Producto</label><input id="m-producto" placeholder="REJILLA, KIT, TAPA..."></div>
+                        <div><label>Producto</label><input id="m-producto" list="producto-options" placeholder="Elige o escribe uno nuevo" autocomplete="off"></div>
                         <div><label>Número de Parte (NP)</label><input id="m-np"></div>
                         <div><label>Operador</label><input id="m-operador" placeholder="Nombre"></div>
                         <div><label>RRHH (personas)</label><input type="number" id="m-rrhh" min="0"></div>
@@ -142,7 +142,7 @@
                     <div class="grid">
                         <div><label>Fecha</label><input type="date" id="t-fecha"></div>
                         <div><label>Persona</label><input id="t-persona" placeholder="José Reyes..."></div>
-                        <div><label>Tipo</label><select id="t-tipo"><option>POLARIS</option><option>RECUPERADAS - USO INTERNO</option></select></div>
+                        <div><label>Tipo</label><select id="t-tipo"><option>POLARIS</option><option>RECUPERADAS - USO INTERNO</option><option>NORMALES</option></select></div>
                         <div><label>Cantidad</label><input type="number" id="t-cant" min="0"></div>
                     </div>
                     <button class="btn" onclick="window.addTarimaEntry()">Agregar registro</button>
@@ -184,6 +184,7 @@
                 <button class="subtab-btn" data-sub="res-manuales">Manuales (general)</button>
                 <button class="subtab-btn" data-sub="res-tarimas">Tarimas</button>
                 <button class="subtab-btn" data-sub="res-contenedores">Contenedores</button>
+                <button class="subtab-btn" data-sub="res-top5">Top 5 Productos</button>
             </div>
 
             <!-- Resumen: Máquinas -->
@@ -265,8 +266,44 @@
                 </div>
                 <div class="card"><div class="tablewrap"><table id="tbl-resumen-contenedores"><thead></thead><tbody></tbody></table></div></div>
             </div>
+
+            <!-- Resumen: Top 5 Productos -->
+            <div class="subpanel" id="res-top5">
+                <div class="card">
+                    <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(150px,220px));">
+                        <div><label>Mes</label><select id="rtop-mes"></select></div>
+                        <div><label>Año</label><input type="number" id="rtop-anio" value="2026"></div>
+                        <div><label>Fuente</label>
+                            <select id="rtop-fuente">
+                                <option value="ambos">Máquinas + Manuales</option>
+                                <option value="maquinas">Solo Máquinas</option>
+                                <option value="manuales">Solo Manuales</option>
+                            </select>
+                        </div>
+                    </div>
+                    <button class="btn secondary" onclick="window.renderTop5()">Generar</button>
+                    <p class="note">Top 5 productos con mayor cantidad producida (CANT PROD) en el mes seleccionado.</p>
+                </div>
+                <div class="card">
+                    <div id="chart-top5"></div>
+                </div>
+            </div>
         </div>
     </div>
+
+    <!-- Lista de productos sugeridos: el campo Producto sigue aceptando cualquier texto libre -->
+    <datalist id="producto-options">
+        <option value="CAJA">
+        <option value="REJILLA">
+        <option value="TAPA">
+        <option value="SEPARADOR">
+        <option value="KIT">
+        <option value="FOAM">
+        <option value="INSERTO">
+        <option value="MANGA">
+        <option value="TACÓN">
+        <option value="CHAROLA">
+    </datalist>
 
     <script src="js/app.js"></script>
 </body>

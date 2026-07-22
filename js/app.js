@@ -37,11 +37,11 @@ function normalizeMachine(raw) {
     return null;
 }
 
-function defaultTiempoDisponible(machineId, dateStr) {
+function defaultTiempoDisponible(machineId, dateStr) { // sirve para crear la constante de tiempo "defaul: 570min"
     const m = machineById(machineId);
     const d = new Date(dateStr + 'T00:00:00');
     const dow = d.getDay();
-    if (m && m.flexo) return null;
+    //if (m && m.flexo) return null;
     if (dow === 0 || dow === 6) return 0;
     if (dow === 2) return 600;
     return 570;
@@ -252,7 +252,7 @@ function setDateInputs() {
 
 function setMonthSelects() {
     const month = getCurrentMonth();
-    ['r-mes', 'rk-mes', 'rm-mes', 'rt-mes', 'rc-mes'].forEach(id => {
+    ['r-mes', 'rk-mes', 'rm-mes', 'rt-mes', 'rc-mes', 'rtop-mes'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.value = month;
     });
@@ -399,9 +399,9 @@ async function addMaquinaEntry() {
         tiempo: numval('f-tiempo'),
         comentarios: val('f-comentarios')
     });
-    await saveArr('entries-maquinas', DB.maquinas);
-    ['f-producto', 'f-np', 'f-operador', 'f-rrhh', 'f-cant', 'f-tiempo', 'f-comentarios']
-        .forEach(id => document.getElementById(id).value = '');
+    await saveArr('entries-maquinas', DB.maquinas); 
+    ['f-producto', 'f-np', 'f-operador', 'f-rrhh' , 'f-cant', 'f-tiempo', 'f-comentarios'] 
+        .forEach(id => document.getElementById(id).value = ''); //BORRA LOS CAMPOS NO GUARDADOS
     setStatus('status-maquinas', 'Guardado ✓');
     renderMaquinasTable();
 }
@@ -421,7 +421,7 @@ async function handleImportMaquinas(file) {
     let imported = 0,
         ignored = 0;
     json.forEach(row => {
-        const fecha = parseExcelDate(row['FECHA']);
+        const fecha = parseExcelDate(row['FECHA']); 
         const maquinaId = normalizeMachine(row['MAQUINA']);
         if (!fecha || !maquinaId) {
             if (row['FECHA']) ignored++;
@@ -692,6 +692,8 @@ async function renderResumenMaquina() {
         const paroDia = DB.paro.filter(e => e.fecha === fecha && e.maquina === maquina);
         const paroMin = sum(paroDia, 'minutos');
         const motivos = paroDia.map(e => e.motivo).filter(x => x).join('; ');
+        const operadoresDia = [...new Set(entriesDia.map(e => e.operador).filter(x => x))].join(', ');
+        const fechaTitle = operadoresDia ? `Operador(es): ${operadoresDia}` : 'Sin operador capturado';
 
         if (tiempoNum > 0) {
             totalProd += produccion;
@@ -705,7 +707,7 @@ async function renderResumenMaquina() {
 
         rowsHtml.push(`<tr>
             <td>${DIAS_ABR[dow]}</td>
-            <td>${fecha}</td>
+            <td title="${fechaTitle}" style="cursor:help;border-bottom:1px dotted var(--sub);">${fecha}</td>
             <td><input type="number" style="width:70px" value="${tiempoDisp}" onchange="window.updateTiempoOverride('${maquina}','${fecha}',this.value)"></td>
             <td>${produccion}</td>
             <td>${partidas}</td>
@@ -937,6 +939,74 @@ function exportResumenContenedores() {
         'CONTENEDORES');
 }
 
+// ===== RESUMEN: TOP 5 PRODUCTOS =====
+
+function renderTop5() {
+    const mes = parseInt(val('rtop-mes'), 10);
+    const anio = parseInt(val('rtop-anio'), 10);
+    const fuente = val('rtop-fuente') || 'ambos';
+
+    let registros = [];
+    if (fuente === 'ambos' || fuente === 'maquinas') registros = registros.concat(DB.maquinas);
+    if (fuente === 'ambos' || fuente === 'manuales') registros = registros.concat(DB.manuales);
+
+    const delMes = filterByMonthYear(registros, mes, anio);
+
+    const porProducto = {};
+    delMes.forEach(e => {
+        const nombre = (e.producto || 'SIN PRODUCTO').trim().toUpperCase();
+        porProducto[nombre] = (porProducto[nombre] || 0) + (Number(e.cant) || 0);
+    });
+
+    const top5 = Object.entries(porProducto)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5);
+
+    const cont = document.getElementById('chart-top5');
+    if (!top5.length) {
+        cont.innerHTML = `<div class="empty">Sin datos capturados este mes</div>`;
+        return;
+    }
+
+    const max = top5[0][1];
+    cont.innerHTML = top5.map(([producto, cant]) => {
+        const pct = max ? Math.round((cant / max) * 100) : 0;
+        return `
+            <div class="top5-row">
+                <div class="top5-label" title="${producto}">${producto}</div>
+                <div class="top5-bar-bg"><div class="top5-bar-fill" style="width:${pct}%"></div></div>
+                <div class="top5-value">${cant.toLocaleString()}</div>
+            </div>
+        `;
+    }).join('');
+}
+
+// ================================================================
+// LISTENER PARA CAMBIO DE MÁQUINA 
+// ================================================================
+
+/*function onMaquinaChange() {
+    const selector = document.getElementById('f-maquina');
+    if (!selector) return;
+    const maquinaActual = selector.value;
+    if (!maquinaActual) return;
+
+    // Limpia los mismos campos que se limpian al guardar un registro
+    // (deja fecha, máquina, operador y RRHH tal como quedaron, igual que addMaquinaEntry)
+    ['f-producto', 'f-np', 'f-cant', 'f-tiempo', 'f-comentarios']
+        .forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.value = '';
+        });
+
+    const maquina = machineById(maquinaActual);
+    if (maquina) {
+        setStatus('status-maquinas', `🔄 Campos limpiados para ${maquina.label}`, false);
+    }
+}
+window.onMaquinaChange = onMaquinaChange;*/
+
+
 /* ================================================================
    INICIALIZACIÓN (BOOT)
    ================================================================ */
@@ -951,6 +1021,7 @@ async function boot() {
     fillMonthSelect('rm-mes');
     fillMonthSelect('rt-mes');
     fillMonthSelect('rc-mes');
+    fillMonthSelect('rtop-mes');
 
     buildChecklist();
     setDateInputs();
@@ -1012,6 +1083,8 @@ window.exportResumenTarimas = exportResumenTarimas;
 
 window.renderResumenContenedores = renderResumenContenedores;
 window.exportResumenContenedores = exportResumenContenedores;
+
+window.renderTop5 = renderTop5;
 
 // UI
 window.updateSubProc = updateSubProc;
