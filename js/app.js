@@ -400,7 +400,7 @@ async function addMaquinaEntry() {
         comentarios: val('f-comentarios')
     });
     await saveArr('entries-maquinas', DB.maquinas); 
-    ['f-producto', 'f-np', 'f-operador', 'f-rrhh' , 'f-cant', 'f-tiempo', 'f-comentarios'] 
+    ['f-producto', 'f-np', /*'f-operador', 'f-rrhh'*/, 'f-cant', 'f-tiempo', 'f-comentarios'] 
         .forEach(id => document.getElementById(id).value = ''); //BORRA LOS CAMPOS NO GUARDADOS
     setStatus('status-maquinas', 'Guardado ✓');
     renderMaquinasTable();
@@ -743,6 +743,8 @@ async function renderResumenMaquina() {
         <div class="kpi"><div class="num">${pctProm}${nPct ? '%' : ''}</div><div class="lbl">Cumplimiento promedio</div></div>
         <div class="kpi"><div class="num">${totalParo}</div><div class="lbl">Minutos de paro en el mes</div></div>
     `;
+
+    renderTop5Maquina(maquina, mes, anio);
 }
 
 async function updateTiempoOverride(maquina, fecha, value) {
@@ -939,21 +941,15 @@ function exportResumenContenedores() {
         'CONTENEDORES');
 }
 
-// ===== RESUMEN: TOP 5 PRODUCTOS =====
+// ===== RESUMEN: TOP 5 PRODUCTOS (reutilizable) =====
 
-function renderTop5() {
-    const mes = parseInt(val('rtop-mes'), 10);
-    const anio = parseInt(val('rtop-anio'), 10);
-    const fuente = val('rtop-fuente') || 'ambos';
-
-    let registros = [];
-    if (fuente === 'ambos' || fuente === 'maquinas') registros = registros.concat(DB.maquinas);
-    if (fuente === 'ambos' || fuente === 'manuales') registros = registros.concat(DB.manuales);
-
-    const delMes = filterByMonthYear(registros, mes, anio);
+// Dibuja las barras del Top 5 en cualquier contenedor a partir de filas ya filtradas
+function drawTop5Bars(containerId, rows) {
+    const cont = document.getElementById(containerId);
+    if (!cont) return;
 
     const porProducto = {};
-    delMes.forEach(e => {
+    rows.forEach(e => {
         const nombre = (e.producto || 'SIN PRODUCTO').trim().toUpperCase();
         porProducto[nombre] = (porProducto[nombre] || 0) + (Number(e.cant) || 0);
     });
@@ -962,7 +958,6 @@ function renderTop5() {
         .sort((a, b) => b[1] - a[1])
         .slice(0, 5);
 
-    const cont = document.getElementById('chart-top5');
     if (!top5.length) {
         cont.innerHTML = `<div class="empty">Sin datos capturados este mes</div>`;
         return;
@@ -981,19 +976,38 @@ function renderTop5() {
     }).join('');
 }
 
+function renderTop5() {
+    const mes = parseInt(val('rtop-mes'), 10);
+    const anio = parseInt(val('rtop-anio'), 10);
+    const fuente = val('rtop-fuente') || 'ambos';
+
+    let registros = [];
+    if (fuente === 'ambos' || fuente === 'maquinas') registros = registros.concat(DB.maquinas);
+    if (fuente === 'ambos' || fuente === 'manuales') registros = registros.concat(DB.manuales);
+
+    const delMes = filterByMonthYear(registros, mes, anio);
+    drawTop5Bars('chart-top5', delMes);
+}
+
+// Top 5 de la máquina seleccionada en "Resumen por Máquina" (se refresca junto con la tabla)
+function renderTop5Maquina(maquina, mes, anio) {
+    const delMes = filterByMonthYear(DB.maquinas, mes, anio).filter(e => e.maquina === maquina);
+    drawTop5Bars('chart-top5-maquina', delMes);
+}
+
 // ================================================================
 // LISTENER PARA CAMBIO DE MÁQUINA 
 // ================================================================
 
-/*function onMaquinaChange() {
+function onMaquinaChange() {
     const selector = document.getElementById('f-maquina');
     if (!selector) return;
     const maquinaActual = selector.value;
     if (!maquinaActual) return;
 
-    // Limpia los mismos campos que se limpian al guardar un registro
-    // (deja fecha, máquina, operador y RRHH tal como quedaron, igual que addMaquinaEntry)
-    ['f-producto', 'f-np', 'f-cant', 'f-tiempo', 'f-comentarios']
+    // Clear completo: esta es una entrada nueva de máquina, a diferencia del
+    // clear parcial de addMaquinaEntry (que conserva operador/RRHH para capturas seguidas)
+    ['f-producto', 'f-np', 'f-operador', 'f-rrhh', 'f-cant', 'f-tiempo', 'f-comentarios']
         .forEach(id => {
             const el = document.getElementById(id);
             if (el) el.value = '';
@@ -1004,7 +1018,7 @@ function renderTop5() {
         setStatus('status-maquinas', `🔄 Campos limpiados para ${maquina.label}`, false);
     }
 }
-window.onMaquinaChange = onMaquinaChange;*/
+window.onMaquinaChange = onMaquinaChange;
 
 
 /* ================================================================
