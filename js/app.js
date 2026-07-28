@@ -120,6 +120,8 @@ const DB = {
     tiempoOverrides: {}
 };
 
+let SHEETS_CONFIG = { url: '', enabled: false };
+
 async function loadAll() {
     DB.maquinas = await loadArr('entries-maquinas');
     DB.manuales = await loadArr('entries-manuales');
@@ -127,6 +129,7 @@ async function loadAll() {
     DB.tarimas = await loadArr('entries-tarimas');
     DB.contenedores = await loadArr('entries-contenedores');
     DB.tiempoOverrides = await loadObj('config-tiempo-overrides');
+    SHEETS_CONFIG = Object.assign({ url: '', enabled: false }, await loadObj('config-sheets-sync'));
 }
 
 /* ======================= UTILIDADES ======================= */
@@ -217,6 +220,92 @@ function updateSubProc() {
 }
 window.updateSubProc = updateSubProc;
 
+/* ================================================================
+   OPERADORES DINÁMICOS (Enter o botón "+" agrega otro nombre;
+   el RRHH se calcula solo contando cuántos nombres hay capturados)
+   ================================================================ */
+
+function makeOperadorRow(containerId, rrhhId, primero) {
+    const row = document.createElement('div');
+    row.className = 'operador-row';
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'operador-item';
+    input.placeholder = primero ? 'Nombre del operador' : 'Otro operador';
+    input.addEventListener('input', () => updateOperadoresRRHH(containerId, rrhhId));
+    input.addEventListener('keydown', (ev) => {
+        if (ev.key === 'Enter') {
+            ev.preventDefault();
+            if (input.value.trim()) addOperadorRow(containerId, rrhhId);
+        }
+    });
+
+    const addBtn = document.createElement('button');
+    addBtn.type = 'button';
+    addBtn.className = 'op-btn op-add';
+    addBtn.textContent = '+';
+    addBtn.title = 'Agregar otro operador';
+    addBtn.onclick = () => addOperadorRow(containerId, rrhhId);
+
+    row.appendChild(input);
+    row.appendChild(addBtn);
+
+    if (!primero) {
+        const removeBtn = document.createElement('button');
+        removeBtn.type = 'button';
+        removeBtn.className = 'op-btn op-remove';
+        removeBtn.textContent = '×';
+        removeBtn.title = 'Quitar este operador';
+        removeBtn.onclick = () => {
+            row.remove();
+            updateOperadoresRRHH(containerId, rrhhId);
+        };
+        row.appendChild(removeBtn);
+    }
+
+    return { row, input };
+}
+
+function initOperadorList(containerId, rrhhId) {
+    const cont = document.getElementById(containerId);
+    if (!cont) return;
+    cont.innerHTML = '';
+    const { row, input } = makeOperadorRow(containerId, rrhhId, true);
+    cont.appendChild(row);
+    updateOperadoresRRHH(containerId, rrhhId);
+}
+
+function addOperadorRow(containerId, rrhhId) {
+    const cont = document.getElementById(containerId);
+    if (!cont) return;
+    const { row, input } = makeOperadorRow(containerId, rrhhId, false);
+    cont.appendChild(row);
+    input.focus();
+    updateOperadoresRRHH(containerId, rrhhId);
+}
+
+function updateOperadoresRRHH(containerId, rrhhId) {
+    const cont = document.getElementById(containerId);
+    const rrhhEl = document.getElementById(rrhhId);
+    if (!cont || !rrhhEl) return;
+    const n = [...cont.querySelectorAll('.operador-item')].filter(i => i.value.trim()).length;
+    rrhhEl.value = n;
+}
+
+function getOperadoresString(containerId) {
+    const cont = document.getElementById(containerId);
+    if (!cont) return '';
+    return [...cont.querySelectorAll('.operador-item')]
+        .map(i => i.value.trim())
+        .filter(x => x)
+        .join(', ');
+}
+
+function resetOperadorList(containerId, rrhhId) {
+    initOperadorList(containerId, rrhhId);
+}
+
 function setupTabs() {
     document.querySelectorAll('.tab-btn').forEach(btn => {
         btn.addEventListener('click', () => {
@@ -252,7 +341,7 @@ function setDateInputs() {
 
 function setMonthSelects() {
     const month = getCurrentMonth();
-    ['r-mes', 'rk-mes', 'rm-mes', 'rt-mes', 'rc-mes', 'rtop-mes'].forEach(id => {
+    ['r-mes', 'rk-mes', 'rm-mes', 'rt-mes', 'rc-mes', 'rtop-mes', 'rnp-mes'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.value = month;
     });
@@ -387,21 +476,24 @@ async function addMaquinaEntry() {
         setStatus('status-maquinas', 'Fecha y máquina son obligatorias.', true);
         return;
     }
-    DB.maquinas.push({
+    const nuevo = {
         id: uid(),
         fecha,
         maquina,
         producto: val('f-producto'),
         np: val('f-np'),
-        operador: val('f-operador'),
+        operador: getOperadoresString('f-operadores-list'),
         rrhh: numval('f-rrhh'),
         cant: numval('f-cant'),
         tiempo: numval('f-tiempo'),
         comentarios: val('f-comentarios')
-    });
-    await saveArr('entries-maquinas', DB.maquinas); 
-    ['f-producto', 'f-np', /*'f-operador', 'f-rrhh'*/, 'f-cant', 'f-tiempo', 'f-comentarios'] 
-        .forEach(id => document.getElementById(id).value = ''); //BORRA LOS CAMPOS NO GUARDADOS
+    };
+    DB.maquinas.push(nuevo);
+    await saveArr('entries-maquinas', DB.maquinas);
+    pushToSheets('MAQUINAS', mapMaquinaRow(nuevo));
+    // Clear rápido: conserva operador(es) y RRHH para capturas seguidas de la misma máquina
+    ['f-producto', 'f-np', 'f-cant', 'f-tiempo', 'f-comentarios']
+        .forEach(id => document.getElementById(id).value = '');
     setStatus('status-maquinas', 'Guardado ✓');
     renderMaquinasTable();
 }
@@ -476,21 +568,23 @@ async function addManualEntry() {
         ops[op] = cb && cb.checked ? 1 : 0;
     });
     const subproc = Object.values(ops).reduce((a, b) => a + b, 0);
-    DB.manuales.push({
+    const nuevo = {
         id: uid(),
         fecha,
         producto: val('m-producto'),
         np: val('m-np'),
-        operador: val('m-operador'),
+        operador: getOperadoresString('m-operadores-list'),
         rrhh: numval('m-rrhh'),
         cant: numval('m-cant'),
         tiempo: numval('m-tiempo'),
         ops,
         subproc,
         comentarios: val('m-comentarios')
-    });
+    };
+    DB.manuales.push(nuevo);
     await saveArr('entries-manuales', DB.manuales);
-    ['m-producto', 'm-np', 'm-operador', 'm-rrhh', 'm-cant', 'm-tiempo', 'm-comentarios']
+    pushToSheets('MANUALES', mapManualRow(nuevo));
+    ['m-producto', 'm-np', 'm-cant', 'm-tiempo', 'm-comentarios']
         .forEach(id => document.getElementById(id).value = '');
     document.querySelectorAll('.m-op').forEach(cb => cb.checked = false);
     document.getElementById('m-subproc').value = '';
@@ -566,14 +660,16 @@ async function addParoEntry() {
         setStatus('status-paro', 'Fecha y máquina son obligatorias.', true);
         return;
     }
-    DB.paro.push({
+    const nuevo = {
         id: uid(),
         fecha,
         maquina,
         minutos: numval('p-minutos'),
         motivo: val('p-motivo')
-    });
+    };
+    DB.paro.push(nuevo);
     await saveArr('entries-paro', DB.paro);
+    pushToSheets('PARO', mapParoRow(nuevo));
     ['p-minutos', 'p-motivo'].forEach(id => document.getElementById(id).value = '');
     setStatus('status-paro', 'Guardado ✓');
     renderParoTable();
@@ -593,14 +689,16 @@ async function addTarimaEntry() {
         setStatus('status-tarimas', 'La fecha es obligatoria.', true);
         return;
     }
-    DB.tarimas.push({
+    const nuevo = {
         id: uid(),
         fecha,
         persona: val('t-persona'),
         tipo: val('t-tipo'),
         cant: numval('t-cant')
-    });
+    };
+    DB.tarimas.push(nuevo);
     await saveArr('entries-tarimas', DB.tarimas);
+    pushToSheets('TARIMAS', mapTarimaRow(nuevo));
     ['t-persona', 't-cant'].forEach(id => document.getElementById(id).value = '');
     setStatus('status-tarimas', 'Guardado ✓');
     renderTarimasTable();
@@ -620,14 +718,16 @@ async function addContenedorEntry() {
         setStatus('status-contenedores', 'La fecha es obligatoria.', true);
         return;
     }
-    DB.contenedores.push({
+    const nuevo = {
         id: uid(),
         fecha,
         turno: val('c-turno'),
         personas: numval('c-personas'),
         cant: numval('c-cant')
-    });
+    };
+    DB.contenedores.push(nuevo);
     await saveArr('entries-contenedores', DB.contenedores);
+    pushToSheets('CONTENEDORES', mapContenedorRow(nuevo));
     ['c-personas', 'c-cant'].forEach(id => document.getElementById(id).value = '');
     setStatus('status-contenedores', 'Guardado ✓');
     renderContenedoresTable();
@@ -693,7 +793,7 @@ async function renderResumenMaquina() {
         const paroMin = sum(paroDia, 'minutos');
         const motivos = paroDia.map(e => e.motivo).filter(x => x).join('; ');
         const operadoresDia = [...new Set(entriesDia.map(e => e.operador).filter(x => x))].join(', ');
-        const fechaTitle = operadoresDia ? `Operador(es): ${operadoresDia}` : 'Sin operador capturado';
+        const fechaTitle = operadoresDia ? operadoresDia : 'Sin operador capturado';
 
         if (tiempoNum > 0) {
             totalProd += produccion;
@@ -707,7 +807,7 @@ async function renderResumenMaquina() {
 
         rowsHtml.push(`<tr>
             <td>${DIAS_ABR[dow]}</td>
-            <td title="${fechaTitle}" style="cursor:help;border-bottom:1px dotted var(--sub);">${fecha}</td>
+            <td class="op-tooltip" data-operadores="${fechaTitle}">${fecha}</td>
             <td><input type="number" style="width:70px" value="${tiempoDisp}" onchange="window.updateTiempoOverride('${maquina}','${fecha}',this.value)"></td>
             <td>${produccion}</td>
             <td>${partidas}</td>
@@ -943,37 +1043,42 @@ function exportResumenContenedores() {
 
 // ===== RESUMEN: TOP 5 PRODUCTOS (reutilizable) =====
 
-// Dibuja las barras del Top 5 en cualquier contenedor a partir de filas ya filtradas
-function drawTop5Bars(containerId, rows) {
+// Dibuja barras horizontales a partir de pares [etiqueta, valor] ya calculados
+function drawBars(containerId, pares, opts) {
     const cont = document.getElementById(containerId);
     if (!cont) return;
+    opts = opts || {};
+    const limite = opts.limite || 5;
+    const sufijo = opts.sufijo || '';
 
+    const top = pares.sort((a, b) => b[1] - a[1]).slice(0, limite);
+
+    if (!top.length) {
+        cont.innerHTML = `<div class="empty">Sin datos capturados este mes</div>`;
+        return;
+    }
+
+    const max = top[0][1];
+    cont.innerHTML = top.map(([etiqueta, valor]) => {
+        const pct = max ? Math.round((valor / max) * 100) : 0;
+        return `
+            <div class="top5-row">
+                <div class="top5-label" title="${etiqueta}">${etiqueta}</div>
+                <div class="top5-bar-bg"><div class="top5-bar-fill" style="width:${pct}%"></div></div>
+                <div class="top5-value">${valor.toLocaleString()}${sufijo}</div>
+            </div>
+        `;
+    }).join('');
+}
+
+// Mantiene el nombre anterior por compatibilidad: agrupa por producto sumando cantidad
+function drawTop5Bars(containerId, rows) {
     const porProducto = {};
     rows.forEach(e => {
         const nombre = (e.producto || 'SIN PRODUCTO').trim().toUpperCase();
         porProducto[nombre] = (porProducto[nombre] || 0) + (Number(e.cant) || 0);
     });
-
-    const top5 = Object.entries(porProducto)
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 5);
-
-    if (!top5.length) {
-        cont.innerHTML = `<div class="empty">Sin datos capturados este mes</div>`;
-        return;
-    }
-
-    const max = top5[0][1];
-    cont.innerHTML = top5.map(([producto, cant]) => {
-        const pct = max ? Math.round((cant / max) * 100) : 0;
-        return `
-            <div class="top5-row">
-                <div class="top5-label" title="${producto}">${producto}</div>
-                <div class="top5-bar-bg"><div class="top5-bar-fill" style="width:${pct}%"></div></div>
-                <div class="top5-value">${cant.toLocaleString()}</div>
-            </div>
-        `;
-    }).join('');
+    drawBars(containerId, Object.entries(porProducto), { limite: 5 });
 }
 
 function renderTop5() {
@@ -995,6 +1100,32 @@ function renderTop5Maquina(maquina, mes, anio) {
     drawTop5Bars('chart-top5-maquina', delMes);
 }
 
+// ===== RESUMEN: FRECUENCIA DE NÚMEROS DE PARTE =====
+
+function renderFrecuenciaNP() {
+    const mes = parseInt(val('rnp-mes'), 10);
+    const anio = parseInt(val('rnp-anio'), 10);
+    const maquina = val('rnp-maquina');
+    const fuente = val('rnp-fuente') || 'ambos';
+
+    let registros = [];
+    if (fuente === 'ambos' || fuente === 'maquinas') registros = registros.concat(DB.maquinas);
+    if (fuente === 'ambos' || fuente === 'manuales') registros = registros.concat(DB.manuales);
+
+    let delMes = filterByMonthYear(registros, mes, anio);
+    if (maquina) delMes = delMes.filter(e => e.maquina === maquina);
+
+    const porNP = {};
+    delMes.forEach(e => {
+        const np = (e.np || '').trim();
+        if (!np) return; // los registros sin NP capturado no cuentan para esta gráfica
+        const label = `${np}${e.producto ? ' (' + e.producto.trim().toUpperCase() + ')' : ''}`;
+        porNP[label] = (porNP[label] || 0) + 1;
+    });
+
+    drawBars('chart-frecnp', Object.entries(porNP), { limite: 8, sufijo: ' veces' });
+}
+
 // ================================================================
 // LISTENER PARA CAMBIO DE MÁQUINA 
 // ================================================================
@@ -1007,11 +1138,12 @@ function onMaquinaChange() {
 
     // Clear completo: esta es una entrada nueva de máquina, a diferencia del
     // clear parcial de addMaquinaEntry (que conserva operador/RRHH para capturas seguidas)
-    ['f-producto', 'f-np', 'f-operador', 'f-rrhh', 'f-cant', 'f-tiempo', 'f-comentarios']
+    ['f-producto', 'f-np', 'f-cant', 'f-tiempo', 'f-comentarios']
         .forEach(id => {
             const el = document.getElementById(id);
             if (el) el.value = '';
         });
+    resetOperadorList('f-operadores-list', 'f-rrhh');
 
     const maquina = machineById(maquinaActual);
     if (maquina) {
@@ -1025,25 +1157,147 @@ window.onMaquinaChange = onMaquinaChange;
    INICIALIZACIÓN (BOOT)
    ================================================================ */
 
+/* ================================================================
+   SINCRONIZACIÓN CON GOOGLE SHEETS (vía Google Apps Script Web App)
+   Es de una sola vía: el panel manda datos, no los lee de vuelta.
+   Se usa fetch en modo 'no-cors' porque Apps Script no responde con
+   encabezados CORS, así que no hay confirmación visible de éxito.
+   ================================================================ */
+
+function mapMaquinaRow(e) {
+    return {
+        FECHA: e.fecha,
+        MAQUINA: machineById(e.maquina)?.label || e.maquina,
+        PRODUCTO: e.producto,
+        NP: e.np,
+        OPERADOR: e.operador,
+        RRHH: e.rrhh,
+        'CANT PROD': e.cant,
+        TIEMPO: e.tiempo,
+        COMENTARIOS: e.comentarios
+    };
+}
+function mapManualRow(e) {
+    const row = {
+        FECHA: e.fecha, PRODUCTO: e.producto, NP: e.np, OPERADOR: e.operador,
+        RRHH: e.rrhh, 'CANT PROD': e.cant, TIEMPO: e.tiempo
+    };
+    OPERACIONES.forEach(op => row[op] = (e.ops && e.ops[op]) ? 1 : '');
+    row['SUB PROC'] = e.subproc || 0;
+    row['COMENTARIOS'] = e.comentarios;
+    return row;
+}
+function mapParoRow(e) {
+    return { FECHA: e.fecha, MAQUINA: machineById(e.maquina)?.label || e.maquina, MINUTOS: e.minutos, MOTIVO: e.motivo };
+}
+function mapTarimaRow(e) {
+    return { FECHA: e.fecha, PERSONA: e.persona, TIPO: e.tipo, CANTIDAD: e.cant };
+}
+function mapContenedorRow(e) {
+    return { FECHA: e.fecha, TURNO: e.turno, PERSONAS: e.personas, CONTENEDORES: e.cant };
+}
+
+function pushToSheets(sheetName, row) {
+    if (!SHEETS_CONFIG.enabled || !SHEETS_CONFIG.url) return;
+    fetch(SHEETS_CONFIG.url, {
+        method: 'POST',
+        mode: 'no-cors', // Apps Script no manda headers CORS; así evitamos el bloqueo del navegador
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // evita el preflight OPTIONS que Apps Script no soporta
+        body: JSON.stringify({ sheet: sheetName, row })
+    }).catch(err => console.error('Error enviando a Google Sheets:', err));
+}
+
+async function guardarConfigSheets() {
+    const url = val('cfg-webhook-url');
+    const enabled = document.getElementById('cfg-webhook-enabled').checked;
+    SHEETS_CONFIG = { url, enabled };
+    await saveObj('config-sheets-sync', SHEETS_CONFIG);
+    setStatus('status-config', 'Configuración guardada ✓');
+}
+
+function probarConexionSheets() {
+    const url = val('cfg-webhook-url');
+    if (!url) { setStatus('status-config', 'Pega primero la URL del webhook.', true); return; }
+    fetch(url, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({
+            sheet: 'PRUEBA',
+            row: { FECHA: toISODate(new Date()), MENSAJE: 'Conexión de prueba desde el Panel de Producción' }
+        })
+    }).then(() => {
+        setStatus('status-config', 'Prueba enviada — revisa la pestaña "PRUEBA" en tu Google Sheet en unos segundos.');
+    }).catch(() => {
+        setStatus('status-config', 'Error de red al enviar la prueba.', true);
+    });
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+async function reenviarTodoASheets() {
+    if (!val('cfg-webhook-url')) { setStatus('status-reenvio', 'Configura y guarda primero la URL.', true); return; }
+    // Fuerza el envío aunque el toggle esté apagado, ya que el usuario lo pidió explícitamente aquí
+    const urlActiva = val('cfg-webhook-url');
+    const configTemporal = { url: urlActiva, enabled: true };
+    const configOriginal = SHEETS_CONFIG;
+    SHEETS_CONFIG = configTemporal;
+
+    const tareas = [
+        ...DB.maquinas.map(e => ['MAQUINAS', mapMaquinaRow(e)]),
+        ...DB.manuales.map(e => ['MANUALES', mapManualRow(e)]),
+        ...DB.paro.map(e => ['PARO', mapParoRow(e)]),
+        ...DB.tarimas.map(e => ['TARIMAS', mapTarimaRow(e)]),
+        ...DB.contenedores.map(e => ['CONTENEDORES', mapContenedorRow(e)])
+    ];
+
+    if (!tareas.length) {
+        setStatus('status-reenvio', 'No hay registros capturados todavía.', true);
+        SHEETS_CONFIG = configOriginal;
+        return;
+    }
+
+    setStatus('status-reenvio', `Enviando ${tareas.length} registros, no cierres esta pestaña...`);
+    for (let i = 0; i < tareas.length; i++) {
+        pushToSheets(tareas[i][0], tareas[i][1]);
+        await sleep(120); // pequeño espacio entre envíos para no saturar el webhook
+    }
+    SHEETS_CONFIG = configOriginal;
+    setStatus('status-reenvio', `Listo — se reenviaron ${tareas.length} registros.`);
+}
+
+window.guardarConfigSheets = guardarConfigSheets;
+window.probarConexionSheets = probarConexionSheets;
+window.reenviarTodoASheets = reenviarTodoASheets;
+
 async function boot() {
+
     // Configurar UI
     fillMachineSelect('f-maquina');
     fillMachineSelect('p-maquina');
     fillMachineSelect('r-maquina');
+    fillMachineSelect('rnp-maquina');
     fillMonthSelect('r-mes');
     fillMonthSelect('rk-mes');
     fillMonthSelect('rm-mes');
     fillMonthSelect('rt-mes');
     fillMonthSelect('rc-mes');
     fillMonthSelect('rtop-mes');
+    fillMonthSelect('rnp-mes');
 
     buildChecklist();
+    initOperadorList('f-operadores-list', 'f-rrhh');
+    initOperadorList('m-operadores-list', 'm-rrhh');
     setDateInputs();
     setMonthSelects();
     setupTabs();
 
     // Cargar datos
     await loadAll();
+
+    // Precargar configuración de Google Sheets en el formulario
+    document.getElementById('cfg-webhook-url').value = SHEETS_CONFIG.url || '';
+    document.getElementById('cfg-webhook-enabled').checked = !!SHEETS_CONFIG.enabled;
 
     // Renderizar tablas
     renderMaquinasTable();
@@ -1099,6 +1353,7 @@ window.renderResumenContenedores = renderResumenContenedores;
 window.exportResumenContenedores = exportResumenContenedores;
 
 window.renderTop5 = renderTop5;
+window.renderFrecuenciaNP = renderFrecuenciaNP;
 
 // UI
 window.updateSubProc = updateSubProc;

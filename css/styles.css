@@ -343,6 +343,81 @@ input[type=file] {
     display: none;
 }
 
+/* ===== OPERADORES DINÁMICOS ===== */
+.operadores-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.operador-row {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+}
+.operador-row input {
+    flex: 1;
+}
+.op-btn {
+    flex: 0 0 auto;
+    width: 30px;
+    height: 30px;
+    border-radius: 6px;
+    border: 1px solid var(--line);
+    background: #fff;
+    cursor: pointer;
+    font-size: 15px;
+    line-height: 1;
+    color: var(--sub);
+}
+.op-btn.op-add { color: var(--accent); border-color: var(--accent); }
+.op-btn.op-remove { color: var(--bad); border-color: var(--bad); }
+
+/* ===== TOOLTIP OPERADORES (fecha en Resumen por Máquina) ===== */
+.op-tooltip {
+    position: relative;
+    cursor: help;
+    border-bottom: 1px dotted var(--sub);
+}
+.op-tooltip::after {
+    content: attr(data-operadores);
+    position: absolute;
+    bottom: 75%; /*100*/
+    left: 50%;
+    transform: translateX(-50%);
+    background-color: var(--ink);
+    color: #ffffff;
+    padding: 6px 10px;
+    border-radius: 6px;
+    font-size: 11.5px;
+    font-weight: normal;
+    white-space: nowrap;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.18);
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.15s ease;
+    z-index: 30;
+    pointer-events: none;
+}
+.op-tooltip::before {
+    content: '';
+    position: absolute;
+    bottom: 50%; /*112*/
+    left: 50%;
+    transform: translateX(-50%);
+    border: 5px solid transparent;
+    border-top-color: var(--ink);
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.15s ease;
+    z-index: 30;
+    pointer-events: none;
+}
+.op-tooltip:hover::after,
+.op-tooltip:hover::before {
+    opacity: 1;
+    visibility: visible;
+}
+
 /* ===== TOP 5 CHART ===== */
 .top5-row {
     display: grid;

@@ -1,0 +1,68 @@
+/**
+ * WEBHOOK DE SINCRONIZACIÓN — Panel de Producción → Google Sheets
+ * -----------------------------------------------------------------
+ * Este script recibe los registros que manda el Panel de Producción
+ * y los escribe como filas nuevas en esta hoja de cálculo.
+ *
+ * INSTALACIÓN:
+ * 1. Abre (o crea) la hoja de cálculo donde quieres el respaldo.
+ * 2. Menú "Extensiones" > "Apps Script".
+ * 3. Borra el código de ejemplo y pega TODO este archivo.
+ * 4. Guarda (ícono de disco), ponle nombre al proyecto (ej. "Webhook Produccion").
+ * 5. Botón "Implementar" > "Nueva implementación".
+ * 6. Tipo: "Aplicación web".
+ *    - Ejecutar como: "Yo (tu correo)"
+ *    - Quién tiene acceso: "Cualquier usuario"
+ * 7. Clic en "Implementar", autoriza los permisos que pida (son sobre
+ *    tu propia hoja, es seguro).
+ * 8. Copia la URL que termina en /exec — esa es la que pegas en el
+
+"https://script.google.com/macros/s/AKfycbxYCsf9ARxyI624RNpK3KticeDafBAVsGTe9xr-YvWjaqaOYmviBqGlxC3WDQ9VFSK8BQ/exec"
+
+ *    Panel de Producción, en la pestaña "Configuración".
+ *
+ * IMPORTANTE: no compartas esa URL públicamente. Cualquiera que la
+ * tenga podría escribir filas en esta hoja (no puede leerlas ni
+ * borrarlas, solo agregar).
+ */
+
+function doPost(e) {
+  try {
+    var data = JSON.parse(e.postData.contents);
+    var sheetName = data.sheet;   // ej. "MAQUINAS", "MANUALES", "PARO", "TARIMAS", "CONTENEDORES"
+    var row = data.row;           // objeto { "FECHA": "...", "MAQUINA": "...", ... }
+
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var sheet = ss.getSheetByName(sheetName);
+    if (!sheet) {
+      sheet = ss.insertSheet(sheetName);
+    }
+
+    var headers;
+    if (sheet.getLastRow() === 0) {
+      // Primera vez que se escribe en esta hoja: crea el encabezado
+      headers = Object.keys(row);
+      sheet.appendRow(headers);
+    } else {
+      headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+    }
+
+    var values = headers.map(function (h) {
+      return row[h] !== undefined ? row[h] : '';
+    });
+    sheet.appendRow(values);
+
+    return ContentService
+      .createTextOutput(JSON.stringify({ ok: true }))
+      .setMimeType(ContentService.MimeType.JSON);
+
+  } catch (err) {
+    return ContentService
+      .createTextOutput(JSON.stringify({ ok: false, error: String(err) }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+}
+
+function doGet(e) {
+  return ContentService.createTextOutput('Webhook activo. Este endpoint solo acepta POST.');
+}
