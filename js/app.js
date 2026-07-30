@@ -1270,6 +1270,156 @@ window.guardarConfigSheets = guardarConfigSheets;
 window.probarConexionSheets = probarConexionSheets;
 window.reenviarTodoASheets = reenviarTodoASheets;
 
+/* ================================================================
+   IMPORTAR (LEER) DESDE GOOGLE SHEETS
+   A diferencia del push (POST en modo no-cors, "a ciegas"), aquí SÍ
+   podemos leer la respuesta: los doGet de Apps Script sí permiten
+   fetch normal desde el navegador.
+   Solo se agregan filas que no existan ya localmente (comparando
+   por los mismos campos que se guardan en el Sheet), para no duplicar.
+   ================================================================ */
+
+// Convierte un objeto a una "llave" comparable: texto en mayúsculas
+// sin espacios sobrantes, números normalizados — para poder comparar
+// un registro local contra uno leído de Sheets sin falsos negativos
+// por formato (espacios, "150" vs 150, etc.)
+function buildRowKey(row) {
+    return Object.keys(row).sort().map(k => {
+        const v = row[k];
+        if (v === null || v === undefined || v === '') return '';
+        const n = Number(v);
+        return !isNaN(n) && v !== '' ? String(n) : String(v).trim().toUpperCase();
+    }).join('|');
+}
+
+function parseSheetDate(v) {
+    if (!v) return '';
+    const s = String(v);
+    if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+    const d = new Date(s);
+    return isNaN(d) ? '' : toISODate(d);
+}
+
+async function importarDesdeSheets() {
+    const url = val('cfg-webhook-url');
+    if (!url) { setStatus('status-importar-sheets', 'Configura y guarda primero la URL.', true); return; }
+
+    setStatus('status-importar-sheets', 'Consultando Google Sheets...');
+    let datos;
+    try {
+        const resp = await fetch(url, { method: 'GET' });
+        datos = await resp.json();
+    } catch (err) {
+        setStatus('status-importar-sheets', 'No se pudo leer el Sheet. ¿Actualizaste el Apps Script a la versión con doGet?', true);
+        console.error(err);
+        return;
+    }
+
+    let totalNuevos = 0;
+    let totalIgnorados = 0;
+
+    // --- MAQUINAS ---
+    if (Array.isArray(datos.MAQUINAS)) {
+        const existentes = new Set(DB.maquinas.map(e => buildRowKey(mapMaquinaRow(e))));
+        datos.MAQUINAS.forEach(row => {
+            const key = buildRowKey(row);
+            if (existentes.has(key)) return;
+            const maquinaId = normalizeMachine(row.MAQUINA);
+            if (!maquinaId) { totalIgnorados++; return; }
+            DB.maquinas.push({
+                id: uid(), fecha: parseSheetDate(row.FECHA), maquina: maquinaId,
+                producto: row.PRODUCTO || '', np: String(row.NP ?? ''), operador: row.OPERADOR || '',
+                rrhh: Number(row.RRHH) || 0, cant: Number(row['CANT PROD']) || 0,
+                tiempo: Number(row.TIEMPO) || 0, comentarios: row.COMENTARIOS || ''
+            });
+            existentes.add(key);
+            totalNuevos++;
+        });
+        await saveArr('entries-maquinas', DB.maquinas);
+    }
+
+    // --- MANUALES ---
+    if (Array.isArray(datos.MANUALES)) {
+        const existentes = new Set(DB.manuales.map(e => buildRowKey(mapManualRow(e))));
+        datos.MANUALES.forEach(row => {
+            const key = buildRowKey(row);
+            if (existentes.has(key)) return;
+            const ops = {};
+            OPERACIONES.forEach(op => { ops[op] = (row[op] == 1 || row[op] === '1') ? 1 : 0; });
+            const subproc = Object.values(ops).reduce((a, b) => a + b, 0);
+            DB.manuales.push({
+                id: uid(), fecha: parseSheetDate(row.FECHA), producto: row.PRODUCTO || '',
+                np: String(row.NP ?? ''), operador: row.OPERADOR || '', rrhh: Number(row.RRHH) || 0,
+                cant: Number(row['CANT PROD']) || 0, tiempo: Number(row.TIEMPO) || 0,
+                ops, subproc, comentarios: row.COMENTARIOS || ''
+            });
+            existentes.add(key);
+            totalNuevos++;
+        });
+        await saveArr('entries-manuales', DB.manuales);
+    }
+
+    // --- PARO ---
+    if (Array.isArray(datos.PARO)) {
+        const existentes = new Set(DB.paro.map(e => buildRowKey(mapParoRow(e))));
+        datos.PARO.forEach(row => {
+            const key = buildRowKey(row);
+            if (existentes.has(key)) return;
+            const maquinaId = normalizeMachine(row.MAQUINA);
+            if (!maquinaId) { totalIgnorados++; return; }
+            DB.paro.push({
+                id: uid(), fecha: parseSheetDate(row.FECHA), maquina: maquinaId,
+                minutos: Number(row.MINUTOS) || 0, motivo: row.MOTIVO || ''
+            });
+            existentes.add(key);
+            totalNuevos++;
+        });
+        await saveArr('entries-paro', DB.paro);
+    }
+
+    // --- TARIMAS ---
+    if (Array.isArray(datos.TARIMAS)) {
+        const existentes = new Set(DB.tarimas.map(e => buildRowKey(mapTarimaRow(e))));
+        datos.TARIMAS.forEach(row => {
+            const key = buildRowKey(row);
+            if (existentes.has(key)) return;
+            DB.tarimas.push({
+                id: uid(), fecha: parseSheetDate(row.FECHA), persona: row.PERSONA || '',
+                tipo: row.TIPO || '', cant: Number(row.CANTIDAD) || 0
+            });
+            existentes.add(key);
+            totalNuevos++;
+        });
+        await saveArr('entries-tarimas', DB.tarimas);
+    }
+
+    // --- CONTENEDORES ---
+    if (Array.isArray(datos.CONTENEDORES)) {
+        const existentes = new Set(DB.contenedores.map(e => buildRowKey(mapContenedorRow(e))));
+        datos.CONTENEDORES.forEach(row => {
+            const key = buildRowKey(row);
+            if (existentes.has(key)) return;
+            DB.contenedores.push({
+                id: uid(), fecha: parseSheetDate(row.FECHA), turno: row.TURNO || '',
+                personas: Number(row.PERSONAS) || 0, cant: Number(row.CONTENEDORES) || 0
+            });
+            existentes.add(key);
+            totalNuevos++;
+        });
+        await saveArr('entries-contenedores', DB.contenedores);
+    }
+
+    renderMaquinasTable();
+    renderManualesTable();
+    renderParoTable();
+    renderTarimasTable();
+    renderContenedoresTable();
+
+    const msgIgnorados = totalIgnorados ? ` (${totalIgnorados} ignorados: máquina no reconocida)` : '';
+    setStatus('status-importar-sheets', `Listo — ${totalNuevos} registros nuevos importados${msgIgnorados}.`);
+}
+window.importarDesdeSheets = importarDesdeSheets;
+
 async function boot() {
 
     // Configurar UI

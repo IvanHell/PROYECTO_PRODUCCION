@@ -3,14 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Panel de Producción — Máquinas VALLE </title>
+    <title>Panel de Producción — Máquinas VALLE</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <link rel="stylesheet" href="css/styles.css">
 </head>
 <body>
     <!-- HEADER -->
     <header>
-        <h1>Panel de Producción — Máquinas VALLE 3.5 </h1>
+        <h1>Panel de Producción — Máquinas VALLE 3.8 </h1>
         <p>Captura una sola vez, obtén los resúmenes automáticamente. Reemplaza los archivos alimentadores y el reporte final.</p>
     </header>
 
@@ -363,6 +363,19 @@
                 </p>
                 <button class="btn ghost" onclick="window.reenviarTodoASheets()">⬆ Reenviar todo a Google Sheets</button>
                 <span class="status" id="status-reenvio"></span>
+            </div>
+
+            <div class="card">
+                <h2>Traer de vuelta lo capturado en Google Sheets</h2>
+                <p class="note">
+                    Si alguien captura datos directamente en el Sheet (en vez de aquí en el panel),
+                    usa este botón para traerlos y que aparezcan en los Resúmenes. Solo se agrega lo
+                    que no esté ya en el panel — no se duplica ni se borra nada de lo que ya tienes.
+                    Requiere que hayas actualizado el código de Apps Script a la versión con
+                    lectura (doGet) — revisa el archivo que te compartí.
+                </p>
+                <button class="btn secondary" onclick="window.importarDesdeSheets()">⬇ Importar lo nuevo desde Sheets</button>
+                <span class="status" id="status-importar-sheets"></span>
             </div>
         </div>
     </div>
