@@ -55,14 +55,52 @@ function toISODate(d) {
     return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 }
 
-function parseExcelDate(v) {
-    if (v instanceof Date) return toISODate(v);
+// Formatea una fecha interna (YYYY-MM-DD) al formato definitivo de
+// visualización DD/MM/YYYY (el que usamos en Excel/Sheets/México).
+function formatDateDisplay(isoDate) {
+    if (!isoDate || typeof isoDate !== 'string') return '';
+    const [y, m, d] = isoDate.split('-');
+    if (!y || !m || !d) return isoDate;
+    return `${d}/${m}/${y}`;
+}
+
+// Parser único de fechas: acepta objetos Date, números de serie de Excel,
+// texto ISO (YYYY-MM-DD) y texto DD/MM/YYYY o DD/MM/YY.
+// REGLA DEFINITIVA: cualquier fecha con "/" ambigua (como "05/06/2026")
+// se interpreta SIEMPRE como DD/MM/YYYY, nunca como MM/DD/YYYY.
+// Internamente todo se sigue guardando como YYYY-MM-DD (necesario para
+// poder ordenar y comparar fechas como texto sin errores).
+function parseFlexibleDate(v) {
+    if (!v && v !== 0) return '';
+    if (v instanceof Date) return isNaN(v) ? '' : toISODate(v);
+
     if (typeof v === 'number') {
         const d = XLSX.SSF.parse_date_code(v);
         return d ? `${d.y}-${pad2(d.m)}-${pad2(d.d)}` : '';
     }
-    if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}/.test(v)) return v.slice(0, 10);
-    return '';
+
+    const s = String(v).trim();
+    if (!s) return '';
+
+    // Ya viene en formato interno ISO
+    if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+
+    // DD/MM/YYYY o DD/MM/YY — el estándar definitivo para fechas con "/"
+    const m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+    if (m) {
+        let [, d, mo, y] = m;
+        if (y.length === 2) y = (Number(y) < 50 ? '20' : '19') + y;
+        return `${y}-${pad2(mo)}-${pad2(d)}`;
+    }
+
+    // Último recurso (formatos no previstos)
+    const d2 = new Date(s);
+    return isNaN(d2) ? '' : toISODate(d2);
+}
+
+// Se mantiene el nombre anterior por compatibilidad con el resto del código
+function parseExcelDate(v) {
+    return parseFlexibleDate(v);
 }
 
 function uid() {
@@ -364,13 +402,15 @@ function downloadExcel(dataArrayOfObjects, filename, sheetName) {
 
 function renderMaquinasTable() {
     const t = document.getElementById('tbl-maquinas');
-    const rows = [...DB.maquinas].sort((a, b) => b.fecha.localeCompare(a.fecha));
+    const hoy = new Date();
+    const rows = filterByMonthYear(DB.maquinas, hoy.getMonth() + 1, hoy.getFullYear())
+        .sort((a, b) => b.fecha.localeCompare(a.fecha));
     t.querySelector('thead').innerHTML =
         `<tr><th>Fecha</th><th>Máquina</th><th>Producto</th><th>NP</th><th>Operador</th><th>RRHH</th><th>Cant. Prod.</th><th>Tiempo</th><th>Comentarios</th><th></th></tr>`;
     t.querySelector('tbody').innerHTML = rows.length ?
         rows.map(e => `
             <tr>
-                <td>${e.fecha}</td>
+                <td>${formatDateDisplay(e.fecha)}</td>
                 <td class="left">${machineById(e.maquina)?.label || e.maquina}</td>
                 <td class="left">${e.producto || ''}</td>
                 <td>${e.np || ''}</td>
@@ -382,18 +422,20 @@ function renderMaquinasTable() {
                 <td><button class="btn small danger" onclick="window.deleteMaquinaEntry('${e.id}')">Borrar</button></td>
             </tr>
         `).join('') :
-        `<tr><td colspan="10" class="empty">Sin registros aún</td></tr>`;
+        `<tr><td colspan="10" class="empty">Sin registros este mes</td></tr>`;
 }
 
 function renderManualesTable() {
     const t = document.getElementById('tbl-manuales');
-    const rows = [...DB.manuales].sort((a, b) => b.fecha.localeCompare(a.fecha));
+    const hoy = new Date();
+    const rows = filterByMonthYear(DB.manuales, hoy.getMonth() + 1, hoy.getFullYear())
+        .sort((a, b) => b.fecha.localeCompare(a.fecha));
     t.querySelector('thead').innerHTML =
         `<tr><th>Fecha</th><th>Producto</th><th>NP</th><th>Operador</th><th>RRHH</th><th>Cant.</th><th>Tiempo</th><th>Operaciones</th><th>Sub Proc</th><th>Comentarios</th><th></th></tr>`;
     t.querySelector('tbody').innerHTML = rows.length ?
         rows.map(e => `
             <tr>
-                <td>${e.fecha}</td>
+                <td>${formatDateDisplay(e.fecha)}</td>
                 <td class="left">${e.producto || ''}</td>
                 <td>${e.np || ''}</td>
                 <td class="left">${e.operador || ''}</td>
@@ -406,61 +448,67 @@ function renderManualesTable() {
                 <td><button class="btn small danger" onclick="window.deleteManualEntry('${e.id}')">Borrar</button></td>
             </tr>
         `).join('') :
-        `<tr><td colspan="11" class="empty">Sin registros aún</td></tr>`;
+        `<tr><td colspan="11" class="empty">Sin registros este mes</td></tr>`;
 }
 
 function renderParoTable() {
     const t = document.getElementById('tbl-paro');
-    const rows = [...DB.paro].sort((a, b) => b.fecha.localeCompare(a.fecha));
+    const hoy = new Date();
+    const rows = filterByMonthYear(DB.paro, hoy.getMonth() + 1, hoy.getFullYear())
+        .sort((a, b) => b.fecha.localeCompare(a.fecha));
     t.querySelector('thead').innerHTML =
         `<tr><th>Fecha</th><th>Máquina</th><th>Minutos</th><th>Motivo</th><th></th></tr>`;
     t.querySelector('tbody').innerHTML = rows.length ?
         rows.map(e => `
             <tr>
-                <td>${e.fecha}</td>
+                <td>${formatDateDisplay(e.fecha)}</td>
                 <td class="left">${machineById(e.maquina)?.label || e.maquina}</td>
                 <td>${e.minutos || 0}</td>
                 <td class="left">${e.motivo || ''}</td>
                 <td><button class="btn small danger" onclick="window.deleteParoEntry('${e.id}')">Borrar</button></td>
             </tr>
         `).join('') :
-        `<tr><td colspan="5" class="empty">Sin registros aún</td></tr>`;
+        `<tr><td colspan="5" class="empty">Sin registros este mes</td></tr>`;
 }
 
 function renderTarimasTable() {
     const t = document.getElementById('tbl-tarimas');
-    const rows = [...DB.tarimas].sort((a, b) => b.fecha.localeCompare(a.fecha));
+    const hoy = new Date();
+    const rows = filterByMonthYear(DB.tarimas, hoy.getMonth() + 1, hoy.getFullYear())
+        .sort((a, b) => b.fecha.localeCompare(a.fecha));
     t.querySelector('thead').innerHTML =
         `<tr><th>Fecha</th><th>Persona</th><th>Tipo</th><th>Cantidad</th><th></th></tr>`;
     t.querySelector('tbody').innerHTML = rows.length ?
         rows.map(e => `
             <tr>
-                <td>${e.fecha}</td>
+                <td>${formatDateDisplay(e.fecha)}</td>
                 <td class="left">${e.persona || ''}</td>
                 <td class="left">${e.tipo || ''}</td>
                 <td>${e.cant || 0}</td>
                 <td><button class="btn small danger" onclick="window.deleteTarimaEntry('${e.id}')">Borrar</button></td>
             </tr>
         `).join('') :
-        `<tr><td colspan="5" class="empty">Sin registros aún</td></tr>`;
+        `<tr><td colspan="5" class="empty">Sin registros este mes</td></tr>`;
 }
 
 function renderContenedoresTable() {
     const t = document.getElementById('tbl-contenedores');
-    const rows = [...DB.contenedores].sort((a, b) => b.fecha.localeCompare(a.fecha));
+    const hoy = new Date();
+    const rows = filterByMonthYear(DB.contenedores, hoy.getMonth() + 1, hoy.getFullYear())
+        .sort((a, b) => b.fecha.localeCompare(a.fecha));
     t.querySelector('thead').innerHTML =
         `<tr><th>Fecha</th><th>Turno</th><th>Personas</th><th>Contenedores</th><th></th></tr>`;
     t.querySelector('tbody').innerHTML = rows.length ?
         rows.map(e => `
             <tr>
-                <td>${e.fecha}</td>
+                <td>${formatDateDisplay(e.fecha)}</td>
                 <td class="left">${e.turno || ''}</td>
                 <td>${e.personas || 0}</td>
                 <td>${e.cant || 0}</td>
                 <td><button class="btn small danger" onclick="window.deleteContenedorEntry('${e.id}')">Borrar</button></td>
             </tr>
         `).join('') :
-        `<tr><td colspan="5" class="empty">Sin registros aún</td></tr>`;
+        `<tr><td colspan="5" class="empty">Sin registros este mes</td></tr>`;
 }
 
 /* ================================================================
@@ -541,7 +589,7 @@ async function handleImportMaquinas(file) {
 
 function exportMaquinas() {
     const data = DB.maquinas.map(e => ({
-        FECHA: e.fecha,
+        FECHA: formatDateDisplay(e.fecha),
         MAQUINA: machineById(e.maquina)?.label || e.maquina,
         PRODUCTO: e.producto,
         NP: e.np,
@@ -635,7 +683,7 @@ async function handleImportManuales(file) {
 function exportManuales() {
     const data = DB.manuales.map(e => {
         const row = {
-            FECHA: e.fecha,
+            FECHA: formatDateDisplay(e.fecha),
             PRODUCTO: e.producto,
             NP: e.np,
             OPERADOR: e.operador,
@@ -807,7 +855,7 @@ async function renderResumenMaquina() {
 
         rowsHtml.push(`<tr>
             <td>${DIAS_ABR[dow]}</td>
-            <td class="op-tooltip" data-operadores="${fechaTitle}">${fecha}</td>
+            <td class="op-tooltip" data-operadores="${fechaTitle}">${formatDateDisplay(fecha)}</td>
             <td><input type="number" style="width:70px" value="${tiempoDisp}" onchange="window.updateTiempoOverride('${maquina}','${fecha}',this.value)"></td>
             <td>${produccion}</td>
             <td>${partidas}</td>
@@ -820,7 +868,7 @@ async function renderResumenMaquina() {
 
         lastResumenMaquinaRows.push({
             DIA: DIAS_ABR[dow],
-            FECHA: fecha,
+            FECHA: formatDateDisplay(fecha),
             'TIEMPO DISPONIBLE': tiempoNum,
             PRODUCCION: produccion,
             PARTIDAS: partidas,
@@ -879,7 +927,7 @@ function renderResumenKit() {
 
     const total = sum(rows, 'cant');
     lastResumenKitRows = rows.map(e => ({
-        FECHA: e.fecha,
+        FECHA: formatDateDisplay(e.fecha),
         PERSONAL: e.operador,
         'NP KIT': e.np,
         CANTIDAD: e.cant
@@ -891,7 +939,7 @@ function renderResumenKit() {
     t.querySelector('tbody').innerHTML = (rows.length ?
         rows.map(e => `
             <tr>
-                <td>${e.fecha}</td>
+                <td>${formatDateDisplay(e.fecha)}</td>
                 <td class="left">${e.operador || ''}</td>
                 <td class="left">${e.np || ''}</td>
                 <td>${e.cant || 0}</td>
@@ -921,7 +969,7 @@ function renderResumenManuales() {
     }).sort((a, b) => a.fecha.localeCompare(b.fecha));
 
     lastResumenManualesRows = rows.map(e => ({
-        FECHA: e.fecha,
+        FECHA: formatDateDisplay(e.fecha),
         PRODUCTO: e.producto,
         NP: e.np,
         OPERADOR: e.operador,
@@ -938,7 +986,7 @@ function renderResumenManuales() {
     t.querySelector('tbody').innerHTML = (rows.length ?
         rows.map(e => `
             <tr>
-                <td>${e.fecha}</td>
+                <td>${formatDateDisplay(e.fecha)}</td>
                 <td class="left">${e.producto || ''}</td>
                 <td>${e.np || ''}</td>
                 <td class="left">${e.operador || ''}</td>
@@ -1166,7 +1214,7 @@ window.onMaquinaChange = onMaquinaChange;
 
 function mapMaquinaRow(e) {
     return {
-        FECHA: e.fecha,
+        FECHA: formatDateDisplay(e.fecha),
         MAQUINA: machineById(e.maquina)?.label || e.maquina,
         PRODUCTO: e.producto,
         NP: e.np,
@@ -1179,7 +1227,7 @@ function mapMaquinaRow(e) {
 }
 function mapManualRow(e) {
     const row = {
-        FECHA: e.fecha, PRODUCTO: e.producto, NP: e.np, OPERADOR: e.operador,
+        FECHA: formatDateDisplay(e.fecha), PRODUCTO: e.producto, NP: e.np, OPERADOR: e.operador,
         RRHH: e.rrhh, 'CANT PROD': e.cant, TIEMPO: e.tiempo
     };
     OPERACIONES.forEach(op => row[op] = (e.ops && e.ops[op]) ? 1 : '');
@@ -1188,13 +1236,13 @@ function mapManualRow(e) {
     return row;
 }
 function mapParoRow(e) {
-    return { FECHA: e.fecha, MAQUINA: machineById(e.maquina)?.label || e.maquina, MINUTOS: e.minutos, MOTIVO: e.motivo };
+    return { FECHA: formatDateDisplay(e.fecha), MAQUINA: machineById(e.maquina)?.label || e.maquina, MINUTOS: e.minutos, MOTIVO: e.motivo };
 }
 function mapTarimaRow(e) {
-    return { FECHA: e.fecha, PERSONA: e.persona, TIPO: e.tipo, CANTIDAD: e.cant };
+    return { FECHA: formatDateDisplay(e.fecha), PERSONA: e.persona, TIPO: e.tipo, CANTIDAD: e.cant };
 }
 function mapContenedorRow(e) {
-    return { FECHA: e.fecha, TURNO: e.turno, PERSONAS: e.personas, CONTENEDORES: e.cant };
+    return { FECHA: formatDateDisplay(e.fecha), TURNO: e.turno, PERSONAS: e.personas, CONTENEDORES: e.cant };
 }
 
 function pushToSheets(sheetName, row) {
@@ -1224,7 +1272,7 @@ function probarConexionSheets() {
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify({
             sheet: 'PRUEBA',
-            row: { FECHA: toISODate(new Date()), MENSAJE: 'Conexión de prueba desde el Panel de Producción' }
+            row: { FECHA: formatDateDisplay(toISODate(new Date())), MENSAJE: 'Conexión de prueba desde el Panel de Producción' }
         })
     }).then(() => {
         setStatus('status-config', 'Prueba enviada — revisa la pestaña "PRUEBA" en tu Google Sheet en unos segundos.');
@@ -1280,24 +1328,23 @@ window.reenviarTodoASheets = reenviarTodoASheets;
    ================================================================ */
 
 // Convierte un objeto a una "llave" comparable: texto en mayúsculas
-// sin espacios sobrantes, números normalizados — para poder comparar
-// un registro local contra uno leído de Sheets sin falsos negativos
-// por formato (espacios, "150" vs 150, etc.)
+// sin espacios sobrantes, números normalizados, y fechas normalizadas
+// a su valor real (sin importar si el texto dice "08/06/2026",
+// "2026-06-08" u otra variante) — para poder comparar un registro
+// local contra uno leído de Sheets sin falsos negativos.
 function buildRowKey(row) {
     return Object.keys(row).sort().map(k => {
         const v = row[k];
+        if (k === 'FECHA') return parseFlexibleDate(v) || '';
         if (v === null || v === undefined || v === '') return '';
         const n = Number(v);
         return !isNaN(n) && v !== '' ? String(n) : String(v).trim().toUpperCase();
     }).join('|');
 }
 
+// Se mantiene el nombre anterior por compatibilidad; usa el mismo parser único
 function parseSheetDate(v) {
-    if (!v) return '';
-    const s = String(v);
-    if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
-    const d = new Date(s);
-    return isNaN(d) ? '' : toISODate(d);
+    return parseFlexibleDate(v);
 }
 
 async function importarDesdeSheets() {
