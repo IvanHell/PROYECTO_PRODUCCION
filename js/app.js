@@ -108,41 +108,70 @@ function uid() {
 }
 
 /* ======================= STORAGE HELPERS ======================= */
+/*
+ * Detecta automáticamente dónde está corriendo el panel:
+ * - Dentro de una conversación de Claude (vista previa de artefacto):
+ *   usa window.storage, que Claude provee.
+ * - Abierto como archivo local (file://) o subido a un servidor propio:
+ *   window.storage NO existe ahí, así que usa localStorage del navegador
+ *   (nativo, no depende de Claude, funciona igual en cualquier lado).
+ * Un mismo prefijo evita chocar con otras cosas guardadas en el navegador.
+ */
+const LS_PREFIX = 'panel_produccion_';
+const usaClaudeStorage = typeof window.storage !== 'undefined' && window.storage !== null;
 
 async function loadArr(key) {
     try {
-        const r = await window.storage.get(key, false);
-        return r && r.value ? JSON.parse(r.value) : [];
+        if (usaClaudeStorage) {
+            const r = await window.storage.get(key, false);
+            return r && r.value ? JSON.parse(r.value) : [];
+        }
+        const raw = localStorage.getItem(LS_PREFIX + key);
+        return raw ? JSON.parse(raw) : [];
     } catch (e) {
+        console.error('storage error (loadArr)', e);
         return [];
     }
 }
 
 async function saveArr(key, arr) {
     try {
-        await window.storage.set(key, JSON.stringify(arr), false);
+        if (usaClaudeStorage) {
+            await window.storage.set(key, JSON.stringify(arr), false);
+        } else {
+            localStorage.setItem(LS_PREFIX + key, JSON.stringify(arr));
+        }
         return true;
     } catch (e) {
-        console.error('storage error', e);
+        console.error('storage error (saveArr)', e);
         return false;
     }
 }
 
 async function loadObj(key) {
     try {
-        const r = await window.storage.get(key, false);
-        return r && r.value ? JSON.parse(r.value) : {};
+        if (usaClaudeStorage) {
+            const r = await window.storage.get(key, false);
+            return r && r.value ? JSON.parse(r.value) : {};
+        }
+        const raw = localStorage.getItem(LS_PREFIX + key);
+        return raw ? JSON.parse(raw) : {};
     } catch (e) {
+        console.error('storage error (loadObj)', e);
         return {};
     }
 }
 
 async function saveObj(key, obj) {
     try {
-        await window.storage.set(key, JSON.stringify(obj), false);
+        if (usaClaudeStorage) {
+            await window.storage.set(key, JSON.stringify(obj), false);
+        } else {
+            localStorage.setItem(LS_PREFIX + key, JSON.stringify(obj));
+        }
         return true;
     } catch (e) {
-        console.error('storage error', e);
+        console.error('storage error (saveObj)', e);
         return false;
     }
 }
@@ -1453,20 +1482,61 @@ function mergeSinDuplicar(localArr, sheetRows, mapLocalFn, convertFn) {
     return localArr.concat(extra);
 }
 
+// Pide datos a Apps Script en formato JSONP en vez de fetch(): Chrome
+// bloquea con CORB la lectura de las respuestas normales de Apps Script
+// sin importar dónde esté hospedado el panel (ni con https:// se libra),
+// pero SÍ permite cargar <script> entre orígenes distintos — por eso el
+// truco funciona. Se resuelve con null si tarda demasiado o falla.
+let jsonpContador = 0;
+function fetchSheetsJSONP(url, timeoutMs = 10000) {
+    return new Promise(resolve => {
+        const callbackName = `panelSheetsCallback_${jsonpContador++}_${Date.now()}`;
+        const script = document.createElement('script');
+        let terminado = false;
+
+        const limpiar = () => {
+            delete window[callbackName];
+            script.remove();
+            clearTimeout(timer);
+        };
+
+        window[callbackName] = (datos) => {
+            if (terminado) return;
+            terminado = true;
+            limpiar();
+            resolve(datos);
+        };
+
+        const timer = setTimeout(() => {
+            if (terminado) return;
+            terminado = true;
+            limpiar();
+            console.error('JSONP a Google Sheets: se agotó el tiempo de espera.');
+            resolve(null);
+        }, timeoutMs);
+
+        script.onerror = () => {
+            if (terminado) return;
+            terminado = true;
+            limpiar();
+            console.error('JSONP a Google Sheets: no se pudo cargar (revisa la URL o el despliegue).');
+            resolve(null);
+        };
+
+        const sep = url.includes('?') ? '&' : '?';
+        script.src = `${url}${sep}callback=${callbackName}`;
+        document.head.appendChild(script);
+    });
+}
+
 // Consulta Sheets filtrado a un mes/año específico (el propio Apps Script
 // filtra, así no se descarga el historial completo cada vez). Devuelve
 // null si la sincronización está apagada, no hay URL, o falla la consulta
 // (en ese caso los resúmenes simplemente siguen con los datos locales).
 async function fetchSheetsMonth(mes, anio) {
     if (!SHEETS_CONFIG.enabled || !SHEETS_CONFIG.url) return null;
-    try {
-        const sep = SHEETS_CONFIG.url.includes('?') ? '&' : '?';
-        const resp = await fetch(`${SHEETS_CONFIG.url}${sep}mes=${mes}&anio=${anio}`, { method: 'GET' });
-        return await resp.json();
-    } catch (err) {
-        console.error('No se pudo consultar Google Sheets para el resumen:', err);
-        return null;
-    }
+    const sep = SHEETS_CONFIG.url.includes('?') ? '&' : '?';
+    return await fetchSheetsJSONP(`${SHEETS_CONFIG.url}${sep}mes=${mes}&anio=${anio}`);
 }
 
 async function importarDesdeSheets() {
@@ -1483,14 +1553,10 @@ async function importarDesdeSheets() {
     const anioActual = hoy.getFullYear();
 
     setStatus('status-importar-sheets', `Consultando el mes actual en Google Sheets...`);
-    let datos;
-    try {
-        const sep = url.includes('?') ? '&' : '?';
-        const resp = await fetch(`${url}${sep}mes=${mesActual}&anio=${anioActual}`, { method: 'GET' });
-        datos = await resp.json();
-    } catch (err) {
-        setStatus('status-importar-sheets', 'No se pudo leer el Sheet. ¿Actualizaste el Apps Script a la versión con doGet?', true);
-        console.error(err);
+    const sep = url.includes('?') ? '&' : '?';
+    const datos = await fetchSheetsJSONP(`${url}${sep}mes=${mesActual}&anio=${anioActual}`);
+    if (!datos) {
+        setStatus('status-importar-sheets', 'No se pudo leer el Sheet. Revisa que el Apps Script esté implementado (Nueva versión) con el código más reciente.', true);
         return;
     }
 
