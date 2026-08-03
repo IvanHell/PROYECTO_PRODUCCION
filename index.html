@@ -10,7 +10,7 @@
 <body>
     <!-- HEADER -->
     <header>
-        <h1>Panel de Producción — Máquinas VALLE 4.3.5 </h1>
+        <h1>Panel de Producción — Máquinas VALLE 4.3.5</h1>
         <p>Captura una sola vez, obtén los resúmenes automáticamente. Reemplaza los archivos alimentadores y el reporte final.</p>
     </header>
 
@@ -366,15 +366,17 @@
             </div>
 
             <div class="card">
-                <h2>Traer de vuelta lo capturado en Google Sheets</h2>
+                <h2>Recuperar el mes actual desde Google Sheets</h2>
                 <p class="note">
-                    Si alguien captura datos directamente en el Sheet (en vez de aquí en el panel),
-                    usa este botón para traerlos y que aparezcan en los Resúmenes. Solo se agrega lo
-                    que no esté ya en el panel — no se duplica ni se borra nada de lo que ya tienes.
+                    Trae y guarda localmente <strong>solo el mes en curso</strong> — útil si alguien
+                    capturó directo en el Sheet, o como respaldo si algo se perdió en el panel.
+                    Los meses anteriores NUNCA se guardan aquí a propósito: viven solo en Sheets y
+                    se consultan automáticamente (sin guardarse) cada vez que generas su Resumen.
+                    Solo se agrega lo que no esté ya en el panel — no se duplica.
                     Requiere que hayas actualizado el código de Apps Script a la versión con
                     lectura (doGet) — revisa el archivo que te compartí.
                 </p>
-                <button class="btn secondary" onclick="window.importarDesdeSheets()">⬇ Importar lo nuevo desde Sheets</button>
+                <button class="btn secondary" onclick="window.importarDesdeSheets()">⬇ Recuperar mes actual desde Sheets</button>
                 <span class="status" id="status-importar-sheets"></span>
             </div>
         </div>

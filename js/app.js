@@ -805,6 +805,14 @@ async function renderResumenMaquina() {
     const anio = parseInt(val('r-anio'), 10);
     if (!maquina) return;
 
+    const datosSheets = await fetchSheetsMonth(mes, anio);
+    const datosMaquinasDelMes = mergeSinDuplicar(
+        filterByMonthYear(DB.maquinas, mes, anio), datosSheets?.MAQUINAS, mapMaquinaRow, convertirFilaMaquina
+    );
+    const datosParoDelMes = mergeSinDuplicar(
+        filterByMonthYear(DB.paro, mes, anio), datosSheets?.PARO, mapParoRow, convertirFilaParo
+    );
+
     const diasEnMes = getDaysInMonth(anio, mes);
     const cfg = machineById(maquina);
 
@@ -818,7 +826,7 @@ async function renderResumenMaquina() {
     for (let d = 1; d <= diasEnMes; d++) {
         const fecha = `${anio}-${pad2(mes)}-${pad2(d)}`;
         const dow = getDayOfWeek(fecha);
-        const entriesDia = DB.maquinas.filter(e => e.fecha === fecha && e.maquina === maquina);
+        const entriesDia = datosMaquinasDelMes.filter(e => e.fecha === fecha && e.maquina === maquina);
         const produccion = sum(entriesDia, 'cant');
         const partidas = new Set(entriesDia.map(e => (e.np || '').trim().toUpperCase()).filter(x => x)).size ||
             (entriesDia.length ? 1 : 0);
@@ -837,7 +845,7 @@ async function renderResumenMaquina() {
             0;
         const pct = esperado > 0 ? real / esperado : 0;
 
-        const paroDia = DB.paro.filter(e => e.fecha === fecha && e.maquina === maquina);
+        const paroDia = datosParoDelMes.filter(e => e.fecha === fecha && e.maquina === maquina);
         const paroMin = sum(paroDia, 'minutos');
         const motivos = paroDia.map(e => e.motivo).filter(x => x).join('; ');
         const operadoresDia = [...new Set(entriesDia.map(e => e.operador).filter(x => x))].join(', ');
@@ -892,7 +900,7 @@ async function renderResumenMaquina() {
         <div class="kpi"><div class="num">${totalParo}</div><div class="lbl">Minutos de paro en el mes</div></div>
     `;
 
-    renderTop5Maquina(maquina, mes, anio);
+    renderTop5Maquina(maquina, datosMaquinasDelMes);
 }
 
 async function updateTiempoOverride(maquina, fecha, value) {
@@ -916,14 +924,17 @@ function exportResumenMaquina() {
 
 // ===== RESUMEN: KIT (derivado de Manuales) =====
 
-function renderResumenKit() {
+async function renderResumenKit() {
     const mes = parseInt(val('rk-mes'), 10);
     const anio = parseInt(val('rk-anio'), 10);
-    const rows = DB.manuales.filter(e => {
-        if ((e.producto || '').trim().toUpperCase() !== 'KIT') return false;
-        const d = parseDate(e.fecha);
-        return d.getFullYear() === anio && (d.getMonth() + 1) === mes;
-    }).sort((a, b) => a.fecha.localeCompare(b.fecha));
+
+    const datosSheets = await fetchSheetsMonth(mes, anio);
+    const manualesDelMes = mergeSinDuplicar(
+        filterByMonthYear(DB.manuales, mes, anio), datosSheets?.MANUALES, mapManualRow, convertirFilaManual
+    );
+    const rows = manualesDelMes
+        .filter(e => (e.producto || '').trim().toUpperCase() === 'KIT')
+        .sort((a, b) => a.fecha.localeCompare(b.fecha));
 
     const total = sum(rows, 'cant');
     lastResumenKitRows = rows.map(e => ({
@@ -956,14 +967,16 @@ function exportResumenKit() {
 
 // ===== RESUMEN: MANUALES (general) =====
 
-function renderResumenManuales() {
+async function renderResumenManuales() {
     const mes = parseInt(val('rm-mes'), 10);
     const anio = parseInt(val('rm-anio'), 10);
     const filtroProd = val('rm-producto').toUpperCase();
 
-    const rows = DB.manuales.filter(e => {
-        const d = parseDate(e.fecha);
-        if (d.getFullYear() !== anio || (d.getMonth() + 1) !== mes) return false;
+    const datosSheets = await fetchSheetsMonth(mes, anio);
+    const manualesDelMes = mergeSinDuplicar(
+        filterByMonthYear(DB.manuales, mes, anio), datosSheets?.MANUALES, mapManualRow, convertirFilaManual
+    );
+    const rows = manualesDelMes.filter(e => {
         if (filtroProd && (e.producto || '').toUpperCase() !== filtroProd) return false;
         return true;
     }).sort((a, b) => a.fecha.localeCompare(b.fecha));
@@ -1009,10 +1022,14 @@ function exportResumenManuales() {
 
 // ===== RESUMEN: TARIMAS =====
 
-function renderResumenTarimas() {
+async function renderResumenTarimas() {
     const mes = parseInt(val('rt-mes'), 10);
     const anio = parseInt(val('rt-anio'), 10);
-    const rows = filterByMonthYear(DB.tarimas, mes, anio);
+
+    const datosSheets = await fetchSheetsMonth(mes, anio);
+    const rows = mergeSinDuplicar(
+        filterByMonthYear(DB.tarimas, mes, anio), datosSheets?.TARIMAS, mapTarimaRow, convertirFilaTarima
+    );
 
     const porPersona = {};
     rows.forEach(e => {
@@ -1046,10 +1063,14 @@ function exportResumenTarimas() {
 
 // ===== RESUMEN: CONTENEDORES =====
 
-function renderResumenContenedores() {
+async function renderResumenContenedores() {
     const mes = parseInt(val('rc-mes'), 10);
     const anio = parseInt(val('rc-anio'), 10);
-    const rows = filterByMonthYear(DB.contenedores, mes, anio);
+
+    const datosSheets = await fetchSheetsMonth(mes, anio);
+    const rows = mergeSinDuplicar(
+        filterByMonthYear(DB.contenedores, mes, anio), datosSheets?.CONTENEDORES, mapContenedorRow, convertirFilaContenedor
+    );
 
     const porTurno = {};
     rows.forEach(e => {
@@ -1129,42 +1150,60 @@ function drawTop5Bars(containerId, rows) {
     drawBars(containerId, Object.entries(porProducto), { limite: 5 });
 }
 
-function renderTop5() {
+async function renderTop5() {
     const mes = parseInt(val('rtop-mes'), 10);
     const anio = parseInt(val('rtop-anio'), 10);
     const fuente = val('rtop-fuente') || 'ambos';
 
+    const datosSheets = await fetchSheetsMonth(mes, anio);
     let registros = [];
-    if (fuente === 'ambos' || fuente === 'maquinas') registros = registros.concat(DB.maquinas);
-    if (fuente === 'ambos' || fuente === 'manuales') registros = registros.concat(DB.manuales);
+    if (fuente === 'ambos' || fuente === 'maquinas') {
+        registros = registros.concat(mergeSinDuplicar(
+            filterByMonthYear(DB.maquinas, mes, anio), datosSheets?.MAQUINAS, mapMaquinaRow, convertirFilaMaquina
+        ));
+    }
+    if (fuente === 'ambos' || fuente === 'manuales') {
+        registros = registros.concat(mergeSinDuplicar(
+            filterByMonthYear(DB.manuales, mes, anio), datosSheets?.MANUALES, mapManualRow, convertirFilaManual
+        ));
+    }
 
-    const delMes = filterByMonthYear(registros, mes, anio);
-    drawTop5Bars('chart-top5', delMes);
+    drawTop5Bars('chart-top5', registros);
 }
 
-// Top 5 de la máquina seleccionada en "Resumen por Máquina" (se refresca junto con la tabla)
-function renderTop5Maquina(maquina, mes, anio) {
-    const delMes = filterByMonthYear(DB.maquinas, mes, anio).filter(e => e.maquina === maquina);
-    drawTop5Bars('chart-top5-maquina', delMes);
+// Top 5 de la máquina seleccionada en "Resumen por Máquina" — recibe los
+// datos del mes que renderResumenMaquina ya trajo y mezcló (no vuelve a
+// consultar Sheets por separado)
+function renderTop5Maquina(maquina, datosMaquinasDelMes) {
+    const delMaquina = datosMaquinasDelMes.filter(e => e.maquina === maquina);
+    drawTop5Bars('chart-top5-maquina', delMaquina);
 }
 
 // ===== RESUMEN: FRECUENCIA DE NÚMEROS DE PARTE =====
 
-function renderFrecuenciaNP() {
+async function renderFrecuenciaNP() {
     const mes = parseInt(val('rnp-mes'), 10);
     const anio = parseInt(val('rnp-anio'), 10);
     const maquina = val('rnp-maquina');
     const fuente = val('rnp-fuente') || 'ambos';
 
+    const datosSheets = await fetchSheetsMonth(mes, anio);
     let registros = [];
-    if (fuente === 'ambos' || fuente === 'maquinas') registros = registros.concat(DB.maquinas);
-    if (fuente === 'ambos' || fuente === 'manuales') registros = registros.concat(DB.manuales);
+    if (fuente === 'ambos' || fuente === 'maquinas') {
+        registros = registros.concat(mergeSinDuplicar(
+            filterByMonthYear(DB.maquinas, mes, anio), datosSheets?.MAQUINAS, mapMaquinaRow, convertirFilaMaquina
+        ));
+    }
+    if (fuente === 'ambos' || fuente === 'manuales') {
+        registros = registros.concat(mergeSinDuplicar(
+            filterByMonthYear(DB.manuales, mes, anio), datosSheets?.MANUALES, mapManualRow, convertirFilaManual
+        ));
+    }
 
-    let delMes = filterByMonthYear(registros, mes, anio);
-    if (maquina) delMes = delMes.filter(e => e.maquina === maquina);
+    if (maquina) registros = registros.filter(e => e.maquina === maquina);
 
     const porNP = {};
-    delMes.forEach(e => {
+    registros.forEach(e => {
         const np = (e.np || '').trim();
         if (!np) return; // los registros sin NP capturado no cuentan para esta gráfica
         const label = `${np}${e.producto ? ' (' + e.producto.trim().toUpperCase() + ')' : ''}`;
@@ -1246,8 +1285,8 @@ function mapContenedorRow(e) {
 }
 
 function pushToSheets(sheetName, row) {
-    if (!SHEETS_CONFIG.enabled || !SHEETS_CONFIG.url) return;
-    fetch(SHEETS_CONFIG.url, {
+    if (!SHEETS_CONFIG.enabled || !SHEETS_CONFIG.url) return Promise.resolve();
+    return fetch(SHEETS_CONFIG.url, {
         method: 'POST',
         mode: 'no-cors', // Apps Script no manda headers CORS; así evitamos el bloqueo del navegador
         headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // evita el preflight OPTIONS que Apps Script no soporta
@@ -1307,8 +1346,11 @@ async function reenviarTodoASheets() {
 
     setStatus('status-reenvio', `Enviando ${tareas.length} registros, no cierres esta pestaña...`);
     for (let i = 0; i < tareas.length; i++) {
-        pushToSheets(tareas[i][0], tareas[i][1]);
-        await sleep(120); // pequeño espacio entre envíos para no saturar el webhook
+        await pushToSheets(tareas[i][0], tareas[i][1]); // espera a que termine antes de mandar el siguiente
+        if ((i + 1) % 10 === 0 || i === tareas.length - 1) {
+            setStatus('status-reenvio', `Enviando... ${i + 1} de ${tareas.length}`);
+        }
+        await sleep(150); // pequeño respiro extra para no saturar el webhook
     }
     SHEETS_CONFIG = configOriginal;
     setStatus('status-reenvio', `Listo — se reenviaron ${tareas.length} registros.`);
@@ -1347,14 +1389,104 @@ function parseSheetDate(v) {
     return parseFlexibleDate(v);
 }
 
+// Convierte una fila leída de Sheets (formato de columnas del Sheet) a la
+// forma interna de cada entrada. Devuelven null cuando la fila no se puede
+// usar (ej. nombre de máquina no reconocido) para que quien llama la ignore.
+
+function convertirFilaMaquina(row) {
+    const maquinaId = normalizeMachine(row.MAQUINA);
+    if (!maquinaId) return null;
+    return {
+        id: uid(), fecha: parseSheetDate(row.FECHA), maquina: maquinaId,
+        producto: row.PRODUCTO || '', np: String(row.NP ?? ''), operador: row.OPERADOR || '',
+        rrhh: Number(row.RRHH) || 0, cant: Number(row['CANT PROD']) || 0,
+        tiempo: Number(row.TIEMPO) || 0, comentarios: row.COMENTARIOS || ''
+    };
+}
+function convertirFilaManual(row) {
+    const ops = {};
+    OPERACIONES.forEach(op => { ops[op] = (row[op] == 1 || row[op] === '1') ? 1 : 0; });
+    const subproc = Object.values(ops).reduce((a, b) => a + b, 0);
+    return {
+        id: uid(), fecha: parseSheetDate(row.FECHA), producto: row.PRODUCTO || '',
+        np: String(row.NP ?? ''), operador: row.OPERADOR || '', rrhh: Number(row.RRHH) || 0,
+        cant: Number(row['CANT PROD']) || 0, tiempo: Number(row.TIEMPO) || 0,
+        ops, subproc, comentarios: row.COMENTARIOS || ''
+    };
+}
+function convertirFilaParo(row) {
+    const maquinaId = normalizeMachine(row.MAQUINA);
+    if (!maquinaId) return null;
+    return {
+        id: uid(), fecha: parseSheetDate(row.FECHA), maquina: maquinaId,
+        minutos: Number(row.MINUTOS) || 0, motivo: row.MOTIVO || ''
+    };
+}
+function convertirFilaTarima(row) {
+    return {
+        id: uid(), fecha: parseSheetDate(row.FECHA), persona: row.PERSONA || '',
+        tipo: row.TIPO || '', cant: Number(row.CANTIDAD) || 0
+    };
+}
+function convertirFilaContenedor(row) {
+    return {
+        id: uid(), fecha: parseSheetDate(row.FECHA), turno: row.TURNO || '',
+        personas: Number(row.PERSONAS) || 0, cant: Number(row.CONTENEDORES) || 0
+    };
+}
+
+// Junta un arreglo local con filas de Sheets, agregando solo lo que no
+// exista ya (comparando por buildRowKey). No modifica el arreglo local
+// que le pasaron — regresa uno nuevo, salvo que se pida lo contrario.
+function mergeSinDuplicar(localArr, sheetRows, mapLocalFn, convertFn) {
+    if (!Array.isArray(sheetRows) || !sheetRows.length) return localArr;
+    const existentes = new Set(localArr.map(e => buildRowKey(mapLocalFn(e))));
+    const extra = [];
+    sheetRows.forEach(row => {
+        const key = buildRowKey(row);
+        if (existentes.has(key)) return;
+        const convertido = convertFn(row);
+        if (!convertido) return;
+        existentes.add(key);
+        extra.push(convertido);
+    });
+    return localArr.concat(extra);
+}
+
+// Consulta Sheets filtrado a un mes/año específico (el propio Apps Script
+// filtra, así no se descarga el historial completo cada vez). Devuelve
+// null si la sincronización está apagada, no hay URL, o falla la consulta
+// (en ese caso los resúmenes simplemente siguen con los datos locales).
+async function fetchSheetsMonth(mes, anio) {
+    if (!SHEETS_CONFIG.enabled || !SHEETS_CONFIG.url) return null;
+    try {
+        const sep = SHEETS_CONFIG.url.includes('?') ? '&' : '?';
+        const resp = await fetch(`${SHEETS_CONFIG.url}${sep}mes=${mes}&anio=${anio}`, { method: 'GET' });
+        return await resp.json();
+    } catch (err) {
+        console.error('No se pudo consultar Google Sheets para el resumen:', err);
+        return null;
+    }
+}
+
 async function importarDesdeSheets() {
     const url = val('cfg-webhook-url');
     if (!url) { setStatus('status-importar-sheets', 'Configura y guarda primero la URL.', true); return; }
 
-    setStatus('status-importar-sheets', 'Consultando Google Sheets...');
+    // Regla del panel: el almacenamiento local NUNCA guarda meses que no
+    // sean el actual. Los meses anteriores viven solo en Sheets y se
+    // consultan al vuelo desde cada Resumen (sin guardarse aquí). Por eso
+    // este botón, aunque diga "Importar", solo trae el mes en curso —
+    // pensado como respaldo/recuperación si algo se perdió localmente.
+    const hoy = new Date();
+    const mesActual = hoy.getMonth() + 1;
+    const anioActual = hoy.getFullYear();
+
+    setStatus('status-importar-sheets', `Consultando el mes actual en Google Sheets...`);
     let datos;
     try {
-        const resp = await fetch(url, { method: 'GET' });
+        const sep = url.includes('?') ? '&' : '?';
+        const resp = await fetch(`${url}${sep}mes=${mesActual}&anio=${anioActual}`, { method: 'GET' });
         datos = await resp.json();
     } catch (err) {
         setStatus('status-importar-sheets', 'No se pudo leer el Sheet. ¿Actualizaste el Apps Script a la versión con doGet?', true);
@@ -1362,98 +1494,20 @@ async function importarDesdeSheets() {
         return;
     }
 
+    const conteos = [
+        ['maquinas', 'entries-maquinas', 'MAQUINAS', mapMaquinaRow, convertirFilaMaquina],
+        ['manuales', 'entries-manuales', 'MANUALES', mapManualRow, convertirFilaManual],
+        ['paro', 'entries-paro', 'PARO', mapParoRow, convertirFilaParo],
+        ['tarimas', 'entries-tarimas', 'TARIMAS', mapTarimaRow, convertirFilaTarima],
+        ['contenedores', 'entries-contenedores', 'CONTENEDORES', mapContenedorRow, convertirFilaContenedor]
+    ];
+
     let totalNuevos = 0;
-    let totalIgnorados = 0;
-
-    // --- MAQUINAS ---
-    if (Array.isArray(datos.MAQUINAS)) {
-        const existentes = new Set(DB.maquinas.map(e => buildRowKey(mapMaquinaRow(e))));
-        datos.MAQUINAS.forEach(row => {
-            const key = buildRowKey(row);
-            if (existentes.has(key)) return;
-            const maquinaId = normalizeMachine(row.MAQUINA);
-            if (!maquinaId) { totalIgnorados++; return; }
-            DB.maquinas.push({
-                id: uid(), fecha: parseSheetDate(row.FECHA), maquina: maquinaId,
-                producto: row.PRODUCTO || '', np: String(row.NP ?? ''), operador: row.OPERADOR || '',
-                rrhh: Number(row.RRHH) || 0, cant: Number(row['CANT PROD']) || 0,
-                tiempo: Number(row.TIEMPO) || 0, comentarios: row.COMENTARIOS || ''
-            });
-            existentes.add(key);
-            totalNuevos++;
-        });
-        await saveArr('entries-maquinas', DB.maquinas);
-    }
-
-    // --- MANUALES ---
-    if (Array.isArray(datos.MANUALES)) {
-        const existentes = new Set(DB.manuales.map(e => buildRowKey(mapManualRow(e))));
-        datos.MANUALES.forEach(row => {
-            const key = buildRowKey(row);
-            if (existentes.has(key)) return;
-            const ops = {};
-            OPERACIONES.forEach(op => { ops[op] = (row[op] == 1 || row[op] === '1') ? 1 : 0; });
-            const subproc = Object.values(ops).reduce((a, b) => a + b, 0);
-            DB.manuales.push({
-                id: uid(), fecha: parseSheetDate(row.FECHA), producto: row.PRODUCTO || '',
-                np: String(row.NP ?? ''), operador: row.OPERADOR || '', rrhh: Number(row.RRHH) || 0,
-                cant: Number(row['CANT PROD']) || 0, tiempo: Number(row.TIEMPO) || 0,
-                ops, subproc, comentarios: row.COMENTARIOS || ''
-            });
-            existentes.add(key);
-            totalNuevos++;
-        });
-        await saveArr('entries-manuales', DB.manuales);
-    }
-
-    // --- PARO ---
-    if (Array.isArray(datos.PARO)) {
-        const existentes = new Set(DB.paro.map(e => buildRowKey(mapParoRow(e))));
-        datos.PARO.forEach(row => {
-            const key = buildRowKey(row);
-            if (existentes.has(key)) return;
-            const maquinaId = normalizeMachine(row.MAQUINA);
-            if (!maquinaId) { totalIgnorados++; return; }
-            DB.paro.push({
-                id: uid(), fecha: parseSheetDate(row.FECHA), maquina: maquinaId,
-                minutos: Number(row.MINUTOS) || 0, motivo: row.MOTIVO || ''
-            });
-            existentes.add(key);
-            totalNuevos++;
-        });
-        await saveArr('entries-paro', DB.paro);
-    }
-
-    // --- TARIMAS ---
-    if (Array.isArray(datos.TARIMAS)) {
-        const existentes = new Set(DB.tarimas.map(e => buildRowKey(mapTarimaRow(e))));
-        datos.TARIMAS.forEach(row => {
-            const key = buildRowKey(row);
-            if (existentes.has(key)) return;
-            DB.tarimas.push({
-                id: uid(), fecha: parseSheetDate(row.FECHA), persona: row.PERSONA || '',
-                tipo: row.TIPO || '', cant: Number(row.CANTIDAD) || 0
-            });
-            existentes.add(key);
-            totalNuevos++;
-        });
-        await saveArr('entries-tarimas', DB.tarimas);
-    }
-
-    // --- CONTENEDORES ---
-    if (Array.isArray(datos.CONTENEDORES)) {
-        const existentes = new Set(DB.contenedores.map(e => buildRowKey(mapContenedorRow(e))));
-        datos.CONTENEDORES.forEach(row => {
-            const key = buildRowKey(row);
-            if (existentes.has(key)) return;
-            DB.contenedores.push({
-                id: uid(), fecha: parseSheetDate(row.FECHA), turno: row.TURNO || '',
-                personas: Number(row.PERSONAS) || 0, cant: Number(row.CONTENEDORES) || 0
-            });
-            existentes.add(key);
-            totalNuevos++;
-        });
-        await saveArr('entries-contenedores', DB.contenedores);
+    for (const [dbKey, storageKey, sheetKey, mapFn, convertFn] of conteos) {
+        const antes = DB[dbKey].length;
+        DB[dbKey] = mergeSinDuplicar(DB[dbKey], datos[sheetKey], mapFn, convertFn);
+        totalNuevos += DB[dbKey].length - antes;
+        await saveArr(storageKey, DB[dbKey]);
     }
 
     renderMaquinasTable();
@@ -1462,8 +1516,7 @@ async function importarDesdeSheets() {
     renderTarimasTable();
     renderContenedoresTable();
 
-    const msgIgnorados = totalIgnorados ? ` (${totalIgnorados} ignorados: máquina no reconocida)` : '';
-    setStatus('status-importar-sheets', `Listo — ${totalNuevos} registros nuevos importados${msgIgnorados}.`);
+    setStatus('status-importar-sheets', `Listo — ${totalNuevos} registros nuevos importados del mes actual.`);
 }
 window.importarDesdeSheets = importarDesdeSheets;
 
