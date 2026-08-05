@@ -12,7 +12,7 @@ const MACHINES = [
     { id: 'RANURADORA', label: 'Ranuradora', piezasMin: 37, ajuste: 35, aliases: ['RANURADORA'] },
     { id: 'T_ROTATIVA', label: 'Troqueladora Rotativa', piezasMin: 35, ajuste: 50, aliases: ['T. ROTATIVA', 'T . ROTATIVA', 'TROQUELADORA ROTATIVA'] },
     { id: 'CAIMAN', label: 'Caimán', piezasMin: 5, ajuste: 15, aliases: ['CAIMAN', 'CAIMÁN'] },
-    { id: 'PEGADORA', label: 'Semiautomática (Pegadora)', piezasMin: 80, ajuste: 30, aliases: ['PEGADORA', 'SEMIAUTOMATICA', 'SEMIAUTOMÁTICA'] },
+    { id: 'PEGADORA', label: 'Pegadora', piezasMin: 80, ajuste: 30, aliases: ['PEGADORA', 'Pegadora'] },
     { id: 'T_PLANA', label: 'Troqueladora Plana', piezasMin: 35, ajuste: 50, aliases: ['T. PLANA', 'TROQ. PLANA', 'TROQUELADORA PLANA'] },
     { id: 'ARMADORA_REJILLAS', label: 'Máquina Armadora (Armadora de Rejillas)', piezasMin: 26, ajuste: 30, aliases: ['ARMADORA DE REJILLAS', 'MAQUINA ARMADORA', 'MÁQUINA ARMADORA'] },
 ];
