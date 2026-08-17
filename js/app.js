@@ -22,6 +22,10 @@ const OPERACIONES = ['DESPIQUE', 'ARMADO', 'CORTE', 'GRAPADO', 'PEGADO', 'ENSAMB
 const DIAS_ABR = ['D', 'L', 'M', 'MI', 'J', 'V', 'S'];
 const MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
 
+/* ======================= CACHE CLIENTE ======================= */
+const SHEETS_CLIENT_CACHE = {};
+const CACHE_TTL_MS = 2 * 60 * 1000; // 2 minutos
+
 /* ======================= HELPERS DE CONFIGURACIÓN ======================= */
 
 function machineById(id) {
@@ -828,27 +832,44 @@ let lastResumenContenedoresRows = [];
 
 // ===== RESUMEN: MÁQUINAS =====
 
-async function renderResumenMaquina() {
+async function renderResumenMaquina(forceRefresh = false) {
     const maquina = val('r-maquina');
     const mes = parseInt(val('r-mes'), 10);
     const anio = parseInt(val('r-anio'), 10);
     if (!maquina) return;
+    
+    const maquinaLabel = machineById(maquina)?.label || maquina;
+    const mesNombre = MESES[mes - 1];
+    const tituloEl = document.getElementById('titulo-resumen-maquina');
+    if (tituloEl) {
+        tituloEl.textContent = `${maquinaLabel} - ${mesNombre.toUpperCase()} ${anio}`;
+        tituloEl.style.opacity = '1';
+    }
 
-    const datosSheets = await fetchSheetsMonth(mes, anio);
-    const datosMaquinasDelMes = mergeSinDuplicar(
-        filterByMonthYear(DB.maquinas, mes, anio), datosSheets?.MAQUINAS, mapMaquinaRow, convertirFilaMaquina
-    );
-    const datosParoDelMes = mergeSinDuplicar(
-        filterByMonthYear(DB.paro, mes, anio), datosSheets?.PARO, mapParoRow, convertirFilaParo
-    );
+    const tbody = document.querySelector('#tbl-resumen-maquina tbody');
+    if (tbody) {
+        tbody.innerHTML = `<tr><td colspan="10" class="empty"><div class="spinner-inline"></div> Consultando datos…</td></tr>`;
+    }
+    const kpiEl = document.getElementById('kpi-maquina');
+    if (kpiEl) {
+        kpiEl.innerHTML = `<div class="kpi" style="grid-column:1/-1;text-align:center;color:var(--sub);"><div class="num">⏳</div><div class="lbl">Consultando Google Sheets…</div></div>`;
+    }
+
+    const resultado = await obtenerDatosResumen(mes, anio, forceRefresh);
+    const datosSheets = resultado.datos;
+    mostrarFuenteDatos('res-maquinas', resultado.fuente, resultado.cacheado);
+
+    const datosMaquinasDelMes = (datosSheets.MAQUINAS || [])
+        .map(convertirFilaMaquina)
+        .filter(Boolean);
+    const datosParoDelMes = (datosSheets.PARO || [])
+        .map(convertirFilaParo)
+        .filter(Boolean);
 
     const diasEnMes = getDaysInMonth(anio, mes);
     const cfg = machineById(maquina);
 
-    let totalProd = 0,
-        totalParo = 0,
-        sumPct = 0,
-        nPct = 0;
+    let totalProd = 0, totalParo = 0, sumPct = 0, nPct = 0;
     const rowsHtml = [];
     lastResumenMaquinaRows = [];
 
@@ -932,6 +953,7 @@ async function renderResumenMaquina() {
     renderTop5Maquina(maquina, datosMaquinasDelMes);
 }
 
+
 async function updateTiempoOverride(maquina, fecha, value) {
     const key = maquina + '_' + fecha;
     if (value === '') {
@@ -953,16 +975,18 @@ function exportResumenMaquina() {
 
 // ===== RESUMEN: KIT (derivado de Manuales) =====
 
-async function renderResumenKit() {
+async function renderResumenKit(forceRefresh = false) {
     const mes = parseInt(val('rk-mes'), 10);
     const anio = parseInt(val('rk-anio'), 10);
 
-    const datosSheets = await fetchSheetsMonth(mes, anio);
-    const manualesDelMes = mergeSinDuplicar(
-        filterByMonthYear(DB.manuales, mes, anio), datosSheets?.MANUALES, mapManualRow, convertirFilaManual
-    );
-    const rows = manualesDelMes
-        .filter(e => (e.producto || '').trim().toUpperCase() === 'KIT')
+    const resultado = await obtenerDatosResumen(mes, anio, forceRefresh);
+    const datosSheets = resultado.datos;
+    mostrarFuenteDatos('res-kit', resultado.fuente, resultado.cacheado);
+
+    // SOLO datos de Sheets
+    const rows = (datosSheets.MANUALES || [])
+        .map(convertirFilaManual)
+        .filter(e => e && (e.producto || '').trim().toUpperCase() === 'KIT')
         .sort((a, b) => a.fecha.localeCompare(b.fecha));
 
     const total = sum(rows, 'cant');
@@ -996,19 +1020,24 @@ function exportResumenKit() {
 
 // ===== RESUMEN: MANUALES (general) =====
 
-async function renderResumenManuales() {
+async function renderResumenManuales(forceRefresh = false) {
     const mes = parseInt(val('rm-mes'), 10);
     const anio = parseInt(val('rm-anio'), 10);
     const filtroProd = val('rm-producto').toUpperCase();
 
-    const datosSheets = await fetchSheetsMonth(mes, anio);
-    const manualesDelMes = mergeSinDuplicar(
-        filterByMonthYear(DB.manuales, mes, anio), datosSheets?.MANUALES, mapManualRow, convertirFilaManual
-    );
-    const rows = manualesDelMes.filter(e => {
-        if (filtroProd && (e.producto || '').toUpperCase() !== filtroProd) return false;
-        return true;
-    }).sort((a, b) => a.fecha.localeCompare(b.fecha));
+    const resultado = await obtenerDatosResumen(mes, anio, forceRefresh);
+    const datosSheets = resultado.datos;
+    mostrarFuenteDatos('res-manuales', resultado.fuente, resultado.cacheado);
+
+    // SOLO datos de Sheets
+    const rows = (datosSheets.MANUALES || [])
+        .map(convertirFilaManual)
+        .filter(e => {
+            if (!e) return false;
+            if (filtroProd && (e.producto || '').toUpperCase() !== filtroProd) return false;
+            return true;
+        })
+        .sort((a, b) => a.fecha.localeCompare(b.fecha));
 
     lastResumenManualesRows = rows.map(e => ({
         FECHA: formatDateDisplay(e.fecha),
@@ -1051,14 +1080,18 @@ function exportResumenManuales() {
 
 // ===== RESUMEN: TARIMAS =====
 
-async function renderResumenTarimas() {
+async function renderResumenTarimas(forceRefresh = false) {
     const mes = parseInt(val('rt-mes'), 10);
     const anio = parseInt(val('rt-anio'), 10);
 
-    const datosSheets = await fetchSheetsMonth(mes, anio);
-    const rows = mergeSinDuplicar(
-        filterByMonthYear(DB.tarimas, mes, anio), datosSheets?.TARIMAS, mapTarimaRow, convertirFilaTarima
-    );
+    const resultado = await obtenerDatosResumen(mes, anio, forceRefresh);
+    const datosSheets = resultado.datos;
+    mostrarFuenteDatos('res-tarimas', resultado.fuente, resultado.cacheado);
+
+    // SOLO datos de Sheets
+    const rows = (datosSheets.TARIMAS || [])
+        .map(convertirFilaTarima)
+        .filter(Boolean);
 
     const porPersona = {};
     rows.forEach(e => {
@@ -1082,7 +1115,6 @@ async function renderResumenTarimas() {
         }).join('') :
         `<tr><td colspan="3" class="empty">Sin registros este mes</td></tr>`;
 }
-
 function exportResumenTarimas() {
     if (!lastResumenTarimasRows.length) { alert('Genera el resumen primero.'); return; }
     downloadExcel(lastResumenTarimasRows,
@@ -1092,14 +1124,18 @@ function exportResumenTarimas() {
 
 // ===== RESUMEN: CONTENEDORES =====
 
-async function renderResumenContenedores() {
+async function renderResumenContenedores(forceRefresh = false) {
     const mes = parseInt(val('rc-mes'), 10);
     const anio = parseInt(val('rc-anio'), 10);
 
-    const datosSheets = await fetchSheetsMonth(mes, anio);
-    const rows = mergeSinDuplicar(
-        filterByMonthYear(DB.contenedores, mes, anio), datosSheets?.CONTENEDORES, mapContenedorRow, convertirFilaContenedor
-    );
+    const resultado = await obtenerDatosResumen(mes, anio, forceRefresh);
+    const datosSheets = resultado.datos;
+    mostrarFuenteDatos('res-contenedores', resultado.fuente, resultado.cacheado);
+
+    // SOLO datos de Sheets
+    const rows = (datosSheets.CONTENEDORES || [])
+        .map(convertirFilaContenedor)
+        .filter(Boolean);
 
     const porTurno = {};
     rows.forEach(e => {
@@ -1179,22 +1215,27 @@ function drawTop5Bars(containerId, rows) {
     drawBars(containerId, Object.entries(porProducto), { limite: 5 });
 }
 
-async function renderTop5() {
+async function renderTop5(forceRefresh = false) {
     const mes = parseInt(val('rtop-mes'), 10);
     const anio = parseInt(val('rtop-anio'), 10);
     const fuente = val('rtop-fuente') || 'ambos';
 
-    const datosSheets = await fetchSheetsMonth(mes, anio);
+    const resultado = await obtenerDatosResumen(mes, anio, forceRefresh);
+    const datosSheets = resultado.datos;
+    mostrarFuenteDatos('res-top5', resultado.fuente, resultado.cacheado);
+    if (!datosSheets) {
+        document.getElementById('chart-top5').innerHTML = '<div class="empty">No se pudo conectar con Google Sheets ni hay datos locales.</div>';
+        return;
+    }
+
     let registros = [];
     if (fuente === 'ambos' || fuente === 'maquinas') {
-        registros = registros.concat(mergeSinDuplicar(
-            filterByMonthYear(DB.maquinas, mes, anio), datosSheets?.MAQUINAS, mapMaquinaRow, convertirFilaMaquina
-        ));
+        registros = registros.concat((datosSheets.MAQUINAS || [])
+            .map(convertirFilaMaquina).filter(Boolean));
     }
     if (fuente === 'ambos' || fuente === 'manuales') {
-        registros = registros.concat(mergeSinDuplicar(
-            filterByMonthYear(DB.manuales, mes, anio), datosSheets?.MANUALES, mapManualRow, convertirFilaManual
-        ));
+        registros = registros.concat((datosSheets.MANUALES || [])
+            .map(convertirFilaManual).filter(Boolean));
     }
 
     drawTop5Bars('chart-top5', registros);
@@ -1210,23 +1251,28 @@ function renderTop5Maquina(maquina, datosMaquinasDelMes) {
 
 // ===== RESUMEN: FRECUENCIA DE NÚMEROS DE PARTE =====
 
-async function renderFrecuenciaNP() {
+async function renderFrecuenciaNP(forceRefresh = false) {
     const mes = parseInt(val('rnp-mes'), 10);
     const anio = parseInt(val('rnp-anio'), 10);
     const maquina = val('rnp-maquina');
     const fuente = val('rnp-fuente') || 'ambos';
 
-    const datosSheets = await fetchSheetsMonth(mes, anio);
+    const resultado = await obtenerDatosResumen(mes, anio, forceRefresh);
+    const datosSheets = resultado.datos;
+    mostrarFuenteDatos('res-frecnp', resultado.fuente, resultado.cacheado);
+    if (!datosSheets) {
+        document.getElementById('chart-frecnp').innerHTML = '<div class="empty">No se pudo conectar con Google Sheets ni hay datos locales.</div>';
+        return;
+    }
+
     let registros = [];
     if (fuente === 'ambos' || fuente === 'maquinas') {
-        registros = registros.concat(mergeSinDuplicar(
-            filterByMonthYear(DB.maquinas, mes, anio), datosSheets?.MAQUINAS, mapMaquinaRow, convertirFilaMaquina
-        ));
+        registros = registros.concat((datosSheets.MAQUINAS || [])
+            .map(convertirFilaMaquina).filter(Boolean));
     }
     if (fuente === 'ambos' || fuente === 'manuales') {
-        registros = registros.concat(mergeSinDuplicar(
-            filterByMonthYear(DB.manuales, mes, anio), datosSheets?.MANUALES, mapManualRow, convertirFilaManual
-        ));
+        registros = registros.concat((datosSheets.MANUALES || [])
+            .map(convertirFilaManual).filter(Boolean));
     }
 
     if (maquina) registros = registros.filter(e => e.maquina === maquina);
@@ -1234,12 +1280,17 @@ async function renderFrecuenciaNP() {
     const porNP = {};
     registros.forEach(e => {
         const np = (e.np || '').trim();
-        if (!np) return; // los registros sin NP capturado no cuentan para esta gráfica
+        if (!np) return;
         const label = `${np}${e.producto ? ' (' + e.producto.trim().toUpperCase() + ')' : ''}`;
         porNP[label] = (porNP[label] || 0) + 1;
     });
 
     drawBars('chart-frecnp', Object.entries(porNP), { limite: 8, sufijo: ' veces' });
+}
+
+async function renderTop5Maquina(maquina, datosMaquinasDelMes) {
+    const delMaquina = datosMaquinasDelMes.filter(e => e.maquina === maquina);
+    drawTop5Bars('chart-top5-maquina', delMaquina);
 }
 
 // ================================================================
@@ -1533,11 +1584,135 @@ function fetchSheetsJSONP(url, timeoutMs = 10000) {
 // filtra, así no se descarga el historial completo cada vez). Devuelve
 // null si la sincronización está apagada, no hay URL, o falla la consulta
 // (en ese caso los resúmenes simplemente siguen con los datos locales).
-async function fetchSheetsMonth(mes, anio) {
+async function fetchSheetsMonth(mes, anio, forceRefresh = false) {
     if (!SHEETS_CONFIG.enabled || !SHEETS_CONFIG.url) return null;
-    const sep = SHEETS_CONFIG.url.includes('?') ? '&' : '?';
-    return await fetchSheetsJSONP(`${SHEETS_CONFIG.url}${sep}mes=${mes}&anio=${anio}`);
+    
+    const cacheKey = `${mes}_${anio}`;
+    const now = Date.now();
+    
+    if (!forceRefresh && SHEETS_CLIENT_CACHE[cacheKey] && (now - SHEETS_CLIENT_CACHE[cacheKey].ts < CACHE_TTL_MS)) {
+        return SHEETS_CLIENT_CACHE[cacheKey].data;
+    }
+    
+    let lastError = null;
+    for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+            const sep = SHEETS_CONFIG.url.includes('?') ? '&' : '?';
+            const data = await fetchSheetsJSONP(`${SHEETS_CONFIG.url}${sep}mes=${mes}&anio=${anio}`, 15000);
+            if (data) {
+                SHEETS_CLIENT_CACHE[cacheKey] = { data, ts: now };
+                return data;
+            }
+        } catch (e) {
+            lastError = e;
+        }
+        if (attempt < 1) await sleep(1000);
+    }
+    console.error('fetchSheetsMonth falló después de 2 intentos:', lastError);
+    return null;
 }
+
+async function obtenerDatosResumen(mes, anio, forceRefresh = false) {
+    const sheets = await fetchSheetsMonth(mes, anio, forceRefresh);
+    if (sheets) {
+        const cacheKey = `${mes}_${anio}`;
+        const cacheado = !forceRefresh && SHEETS_CLIENT_CACHE[cacheKey] && (Date.now() - SHEETS_CLIENT_CACHE[cacheKey].ts < CACHE_TTL_MS);
+        return { fuente: 'sheets', datos: sheets, cacheado };
+    }
+    
+    const filtrar = (arr) => arr.filter(e => {
+        const d = parseDate(e.fecha);
+        return d.getFullYear() === anio && (d.getMonth() + 1) === mes;
+    });
+    
+    return {
+        fuente: 'local',
+        datos: {
+            MAQUINAS: filtrar(DB.maquinas).map(e => ({
+                FECHA: formatDateDisplay(e.fecha),
+                MAQUINA: machineById(e.maquina)?.label || e.maquina,
+                PRODUCTO: e.producto || '',
+                NP: e.np || '',
+                OPERADOR: e.operador || '',
+                RRHH: e.rrhh || 0,
+                'CANT PROD': e.cant || 0,
+                TIEMPO: e.tiempo || 0,
+                COMENTARIOS: e.comentarios || ''
+            })),
+            MANUALES: filtrar(DB.manuales).map(e => {
+                const row = {
+                    FECHA: formatDateDisplay(e.fecha),
+                    PRODUCTO: e.producto || '',
+                    NP: e.np || '',
+                    OPERADOR: e.operador || '',
+                    RRHH: e.rrhh || 0,
+                    'CANT PROD': e.cant || 0,
+                    TIEMPO: e.tiempo || 0
+                };
+                OPERACIONES.forEach(op => row[op] = (e.ops && e.ops[op]) ? 1 : '');
+                row['SUB PROC'] = e.subproc || 0;
+                row['COMENTARIOS'] = e.comentarios || '';
+                return row;
+            }),
+            PARO: filtrar(DB.paro).map(e => ({
+                FECHA: formatDateDisplay(e.fecha),
+                MAQUINA: machineById(e.maquina)?.label || e.maquina,
+                MINUTOS: e.minutos || 0,
+                MOTIVO: e.motivo || ''
+            })),
+            TARIMAS: filtrar(DB.tarimas).map(e => ({
+                FECHA: formatDateDisplay(e.fecha),
+                PERSONA: e.persona || '',
+                TIPO: e.tipo || '',
+                CANTIDAD: e.cant || 0
+            })),
+            CONTENEDORES: filtrar(DB.contenedores).map(e => ({
+                FECHA: formatDateDisplay(e.fecha),
+                TURNO: e.turno || '',
+                PERSONAS: e.personas || 0,
+                CONTENEDORES: e.cant || 0
+            }))
+        },
+        cacheado: false
+    };
+}
+
+function mostrarFuenteDatos(panelId, fuente, cacheado) {
+    const panel = document.getElementById(panelId);
+    if (!panel) return;
+    let badge = panel.querySelector('.fuente-badge');
+    if (!badge) {
+        badge = document.createElement('div');
+        badge.className = 'fuente-badge';
+        const firstCard = panel.querySelector('.card');
+        if (firstCard) {
+            panel.insertBefore(badge, firstCard);
+        } else {
+            panel.prepend(badge);
+        }
+    }
+    if (fuente === 'sheets') {
+        badge.innerHTML = cacheado 
+            ? '✅ Datos de Google Sheets <span class="fuente-sub">(en caché — <a href="#" onclick="window.recargarResumen(\'' + panelId + '\');return false;">↻ recargar</a>)</span>' 
+            : '✅ Datos de Google Sheets <span class="fuente-sub">(<a href="#" onclick="window.recargarResumen(\'' + panelId + '\');return false;">↻ recargar</a>)</span>';
+        badge.className = 'fuente-badge fuente-sheets';
+    } else {
+        badge.innerHTML = '⚠️ Datos locales <span class="fuente-sub">(Sheets no disponible — <a href="#" onclick="window.recargarResumen(\'' + panelId + '\');return false;">↻ reintentar</a>)</span>';
+        badge.className = 'fuente-badge fuente-local';
+    }
+}
+
+window.recargarResumen = function(panelId) {
+    switch(panelId) {
+        case 'res-maquinas': renderResumenMaquina(true); break;
+        case 'res-kit': renderResumenKit(true); break;
+        case 'res-manuales': renderResumenManuales(true); break;
+        case 'res-tarimas': renderResumenTarimas(true); break;
+        case 'res-contenedores': renderResumenContenedores(true); break;
+        case 'res-top5': renderTop5(true); break;
+        case 'res-frecnp': renderFrecuenciaNP(true); break;
+    }
+};
 
 async function importarDesdeSheets() {
     const url = val('cfg-webhook-url');

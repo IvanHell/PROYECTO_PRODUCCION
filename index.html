@@ -10,7 +10,7 @@
 <body>
     <!-- HEADER -->
     <header>
-        <h1>Panel de Producción — Máquinas VALLE 4.5.2 (online version)</h1> 
+        <h1>Panel de Producción — Máquinas VALLE 4.7.5 ("RESUMAEN FUERA DE LOCAL")</h1>
         <p>Captura una sola vez, obtén los resúmenes automáticamente. Reemplaza los archivos alimentadores y el reporte final.</p>
     </header>
 
@@ -208,6 +208,12 @@
                     <p class="note">El "Tiempo Disponible" se precarga con el horario estándar (Lun–Vie 570 min, Martes 600 min, Sáb/Dom 0). Para Flexo y cualquier día con horas extra, edítalo en la tabla.</p>
                 </div>
                 <div class="kpi-grid" id="kpi-maquina"></div>
+
+                <!-- TÍTULO DINÁMICO DE MÁQUINA Y MES -->
+                <div class="card" style="text-align:center; padding:14px;">
+                <h2 id="titulo-resumen-maquina" style="margin:0; font-size:20px; color:var(--ink); letter-spacing:0.5px;"></h2>
+                </div>
+
                 <div class="card"><div class="tablewrap"><table id="tbl-resumen-maquina"><thead></thead><tbody></tbody></table></div></div>
                 <div class="card">
                     <h2>Top 5 productos de esta máquina (mes seleccionado)</h2>
