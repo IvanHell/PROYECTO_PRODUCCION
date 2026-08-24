@@ -2002,7 +2002,7 @@ async function boot() {
     await loadAll();
 
     // Precargar configuración de Google Sheets en el formulario
-    document.getElementById('cfg-webhook-url').value = SHEETS_CONFIG.url || '';
+    document.getElementById('cfg-webhook-url').value = SHEETS_CONFIG.url || 'https://script.google.com/macros/s/AKfycbxkND7SULKytuYTQog2DDx6XSQ8XtUxaJhii0PLqrTQ5uZSOc5ZsRWClfuQImcCnJCg/exec';
     document.getElementById('cfg-webhook-enabled').checked = !!SHEETS_CONFIG.enabled;
 
     // Renderizar tablas
