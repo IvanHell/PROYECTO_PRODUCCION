@@ -10,7 +10,7 @@
 <body>
     <!-- HEADER -->
     <header>
-        <h1>Panel de Producción — Máquinas VALLE 4.7.5 ("ONLINE")https://script.google.com/macros/s/AKfycbx47UFB6Y1SCniiUft-xxjIkKJQ01ibJa-MKuC2pTYZP8HdMoJ7M-r5-Bb3-_5QyAs_/exec</h1>
+        <h1>Panel de Producción — Máquinas VALLE 4.8.5 ("RESUMAEN FUERA DE LOCAL")</h1>
         <p>Captura una sola vez, obtén los resúmenes automáticamente. Reemplaza los archivos alimentadores y el reporte final.</p>
     </header>
 
@@ -40,16 +40,32 @@
                 <div class="card">
                     <h2> Nueva captura de producción (Máquinas)</h2>
                     <div class="grid">
-                        <div><label>Fecha</label><input type="date" id="f-fecha"></div>
-                        <div><label>Máquina</label><select id="f-maquina" onchange="window.onMaquinaChange()"><option value="">Selecciona...</option></select></div>
+                        <div><label>Fecha</label><input type="date" id="f-fecha" onchange="window.updateTiempoDispField()"></div>
+                        <div><label>Máquina</label><select id="f-maquina" onchange="window.onMaquinaChange();window.updateTiempoDispField()"><option value="">Selecciona...</option></select></div>
+                        <div><label>Hoja Viajera (H.V.)</label><input id="f-hv" placeholder="ej. HV-00123"></div>
                         <div><label>Producto</label><input id="f-producto" list="producto-options" placeholder="Elige o escribe uno nuevo" autocomplete="off"></div>
                         <div><label>Número de Parte (NP)</label><input id="f-np" placeholder="ej. 1500144B"></div>
                         <div style="grid-column:1/-1"><label>Operador(es) — escribe un nombre y presiona Enter o toca "+" para agregar otro</label>
                             <div id="f-operadores-list" class="operadores-list"></div>
                         </div>
-                        <div><label>RRHH (automático, según operadores agregados)</label><input type="number" id="f-rrhh" readonly style="background:#f8f9fb;font-weight:bold;"></div>
+                        <div><label>RRHH</label><input type="number" id="f-rrhh" readonly style="background:#f8f9fb;font-weight:bold;"></div>
                         <div><label>Cantidad Producida</label><input type="number" id="f-cant" min="0"></div>
-                        <div><label>Tiempo trabajado (min, informativo)</label><input type="number" id="f-tiempo" min="0"></div>
+                        <div>
+                            <label>Tiempo trabajado</label>
+                            <div class="horario-calc">
+                                <input type="time" id="f-hora-inicio" value="07:00" onchange="window.calcularTiempoMaquina()">
+                                <span class="horario-sep">a</span>
+                                <input type="time" id="f-hora-fin" value="17:00" onchange="window.calcularTiempoMaquina()">
+                                <span class="horario-res" id="f-tiempo-res">= 540 min</span>
+                            </div>
+                            <input type="hidden" id="f-tiempo" value="540">
+                        </div>
+                        <div>
+                            <label>Tiempo Disponible (min)</label>
+                            <input type="number" id="f-tiempo-disp" min="0" onchange="window.onTiempoDispManualChange()">
+                            <div id="f-tiempo-disp-msg" class="tiempo-disp-msg" style="display:none;"></div>
+                        </div>
+                        <!--<div><label>Hoja Viajera (H.V.)</label><input id="f-hv" placeholder="ej. HV-00123"></div>-->
                         <div style="grid-column:1/-1"><label>Comentarios</label><input id="f-comentarios"></div>
                     </div>
                     <div class="toolbar">
@@ -107,12 +123,22 @@
                         <div><label>Fecha</label><input type="date" id="m-fecha"></div>
                         <div><label>Producto</label><input id="m-producto" list="producto-options" placeholder="Elige o escribe uno nuevo" autocomplete="off"></div>
                         <div><label>Número de Parte (NP)</label><input id="m-np"></div>
+                        <div><label>Hoja Viajera (H.V.)</label><input id="m-hv" placeholder="ej. HV-00123"></div>
                         <div style="grid-column:1/-1"><label>Operador(es) — escribe un nombre y presiona Enter o toca "+" para agregar otro</label>
                             <div id="m-operadores-list" class="operadores-list"></div>
                         </div>
-                        <div><label>RRHH (automático, según operadores agregados)</label><input type="number" id="m-rrhh" readonly style="background:#f8f9fb;font-weight:bold;"></div>
+                        <div><label>RRHH</label><input type="number" id="m-rrhh" readonly style="background:#f8f9fb;font-weight:bold;"></div>
                         <div><label>Cantidad Producida</label><input type="number" id="m-cant" min="0"></div>
-                        <div><label>Tiempo (horas/min, informativo)</label><input type="number" step="0.1" id="m-tiempo" min="0"></div>
+                        <div>
+                            <label>Tiempo trabajado</label>
+                            <div class="horario-calc">
+                                <input type="time" id="m-hora-inicio" value="07:00" onchange="window.calcularTiempoManual()">
+                                <span class="horario-sep">a</span>
+                                <input type="time" id="m-hora-fin" value="17:00" onchange="window.calcularTiempoManual()">
+                                <span class="horario-res" id="m-tiempo-res">= 540 min</span>
+                            </div>
+                            <input type="hidden" id="m-tiempo" value="540">
+                        </div>
                     </div>
                     <label style="margin-top:12px">Operaciones realizadas (marca todas las que apliquen)</label>
                     <div class="check-grid" id="m-checklist"></div>

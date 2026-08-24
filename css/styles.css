@@ -505,3 +505,61 @@ input[type=file] {
     text-decoration: underline;
     cursor: pointer;
 }
+/* ===== TIEMPO DISPONIBLE BLOQUEADO ===== */
+input#f-tiempo-disp.bloqueado {
+    background: #e5e7eb !important;
+    color: var(--sub);
+    cursor: not-allowed;
+}
+
+.tiempo-disp-msg {
+    font-size: 11px;
+    margin-top: 4px;
+    padding: 4px 8px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.tiempo-disp-msg.bloqueado {
+    background: #eef2ff;
+    color: var(--accent);
+    border: 1px solid #bfdbfe;
+}
+
+.tiempo-disp-msg.libre {
+    background: #f0fdf4;
+    color: var(--good);
+    border: 1px solid #bbf7d0;
+}
+
+/* ===== CALCULADORA DE HORARIO ===== */
+.horario-calc {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.horario-calc input[type="time"] {
+    width: 100px;
+    padding: 7px 8px;
+    font-size: 13px;
+}
+
+.horario-sep {
+    color: var(--sub);
+    font-size: 12px;
+    font-weight: bold;
+}
+
+.horario-res {
+    font-size: 12px;
+    color: var(--accent);
+    font-weight: bold;
+    background: #eef2ff;
+    padding: 4px 10px;
+    border-radius: 6px;
+    white-space: nowrap;
+}

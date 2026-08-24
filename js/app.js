@@ -439,7 +439,7 @@ function renderMaquinasTable() {
     const rows = filterByMonthYear(DB.maquinas, hoy.getMonth() + 1, hoy.getFullYear())
         .sort((a, b) => b.fecha.localeCompare(a.fecha));
     t.querySelector('thead').innerHTML =
-        `<tr><th>Fecha</th><th>Máquina</th><th>Producto</th><th>NP</th><th>Operador</th><th>RRHH</th><th>Cant. Prod.</th><th>Tiempo</th><th>Comentarios</th><th></th></tr>`;
+        `<tr><th>Fecha</th><th>Máquina</th><th>Producto</th><th>NP</th><th>H.V.</th><th>Operador</th><th>RRHH</th><th>Cant. Prod.</th><th>Tiempo</th><th>T. Disp.</th><th>Comentarios</th><th></th></tr>`;
     t.querySelector('tbody').innerHTML = rows.length ?
         rows.map(e => `
             <tr>
@@ -447,15 +447,17 @@ function renderMaquinasTable() {
                 <td class="left">${machineById(e.maquina)?.label || e.maquina}</td>
                 <td class="left">${e.producto || ''}</td>
                 <td>${e.np || ''}</td>
+                <td>${e.hv || ''}</td>
                 <td class="left">${e.operador || ''}</td>
                 <td>${e.rrhh || 0}</td>
                 <td>${e.cant || 0}</td>
                 <td>${e.tiempo || 0}</td>
+                <td>${e.tiempoDisp || ''}</td>
                 <td class="left">${e.comentarios || ''}</td>
                 <td><button class="btn small danger" onclick="window.deleteMaquinaEntry('${e.id}')">Borrar</button></td>
             </tr>
         `).join('') :
-        `<tr><td colspan="10" class="empty">Sin registros este mes</td></tr>`;
+        `<tr><td colspan="12" class="empty">Sin registros este mes</td></tr>`;
 }
 
 function renderManualesTable() {
@@ -464,13 +466,14 @@ function renderManualesTable() {
     const rows = filterByMonthYear(DB.manuales, hoy.getMonth() + 1, hoy.getFullYear())
         .sort((a, b) => b.fecha.localeCompare(a.fecha));
     t.querySelector('thead').innerHTML =
-        `<tr><th>Fecha</th><th>Producto</th><th>NP</th><th>Operador</th><th>RRHH</th><th>Cant.</th><th>Tiempo</th><th>Operaciones</th><th>Sub Proc</th><th>Comentarios</th><th></th></tr>`;
+        `<tr><th>Fecha</th><th>Producto</th><th>NP</th><th>H.V.</th><th>Operador</th><th>RRHH</th><th>Cant.</th><th>Tiempo</th><th>Operaciones</th><th>Sub Proc</th><th>Comentarios</th><th></th></tr>`;
     t.querySelector('tbody').innerHTML = rows.length ?
         rows.map(e => `
             <tr>
                 <td>${formatDateDisplay(e.fecha)}</td>
                 <td class="left">${e.producto || ''}</td>
                 <td>${e.np || ''}</td>
+                <td>${e.hv || ''}</td>
                 <td class="left">${e.operador || ''}</td>
                 <td>${e.rrhh || 0}</td>
                 <td>${e.cant || 0}</td>
@@ -481,7 +484,7 @@ function renderManualesTable() {
                 <td><button class="btn small danger" onclick="window.deleteManualEntry('${e.id}')">Borrar</button></td>
             </tr>
         `).join('') :
-        `<tr><td colspan="11" class="empty">Sin registros este mes</td></tr>`;
+        `<tr><td colspan="12" class="empty">Sin registros este mes</td></tr>`;
 }
 
 function renderParoTable() {
@@ -557,6 +560,20 @@ async function addMaquinaEntry() {
         setStatus('status-maquinas', 'Fecha y máquina son obligatorias.', true);
         return;
     }
+    // Verificar si ya existe un tiempo disponible para esta máquina+fecha
+    const existente = DB.maquinas.find(e => e.maquina === maquina && e.fecha === fecha && e.tiempoDisp > 0);
+    let tiempoDisp = numval('f-tiempo-disp');
+
+    if (existente) {
+        // Ya hay un tiempo disponible registrado para este día: usar el existente
+        tiempoDisp = existente.tiempoDisp;
+    } else if (tiempoDisp > 0) {
+        // Primer registro del día: guardar como override para el resumen
+        const overrideKey = maquina + '_' + fecha;
+        DB.tiempoOverrides[overrideKey] = tiempoDisp;
+        await saveObj('config-tiempo-overrides', DB.tiempoOverrides);
+    }
+
     const nuevo = {
         id: uid(),
         fecha,
@@ -567,14 +584,22 @@ async function addMaquinaEntry() {
         rrhh: numval('f-rrhh'),
         cant: numval('f-cant'),
         tiempo: numval('f-tiempo'),
+        tiempoDisp: tiempoDisp,
+        hv: val('f-hv'),
         comentarios: val('f-comentarios')
     };
     DB.maquinas.push(nuevo);
     await saveArr('entries-maquinas', DB.maquinas);
+
     pushToSheets('MAQUINAS', mapMaquinaRow(nuevo));
     // Clear rápido: conserva operador(es) y RRHH para capturas seguidas de la misma máquina
-    ['f-producto', 'f-np', 'f-cant', 'f-tiempo', 'f-comentarios']
+    ['f-producto', 'f-np', 'f-cant', 'f-tiempo', 'f-comentarios', 'f-hv']
         .forEach(id => document.getElementById(id).value = '');
+
+    // Si acabamos de registrar el primer tiempo disponible del día, bloquear el campo
+    if (!existente && tiempoDisp > 0) {
+        updateTiempoDispField();
+    }
     setStatus('status-maquinas', 'Guardado ✓');
     renderMaquinasTable();
 }
@@ -582,6 +607,7 @@ async function addMaquinaEntry() {
 async function deleteMaquinaEntry(id) {
     DB.maquinas = DB.maquinas.filter(e => e.id !== id);
     await saveArr('entries-maquinas', DB.maquinas);
+    await saveObj('config-tiempo-overrides', DB.tiempoOverrides);
     renderMaquinasTable();
 }
 
@@ -600,21 +626,30 @@ async function handleImportMaquinas(file) {
             if (row['FECHA']) ignored++;
             return;
         }
+        const tiempoDispImport = Number(row['TIEMPO DISP']) || 0;
         DB.maquinas.push({
             id: uid(),
             fecha,
             maquina: maquinaId,
             producto: row['PRODUCTO'] || '',
             np: String(row['NP'] ?? ''),
+            hv: String(row['H.V.'] ?? ''),
             operador: row['OPERADOR'] || '',
             rrhh: Number(row['RRHH']) || 0,
             cant: Number(row['CANT PROD']) || 0,
             tiempo: Number(row['TIEMPO']) || 0,
+            tiempoDisp: tiempoDispImport,
             comentarios: row['COMENTARIOS'] || ''
         });
+        // Si el Excel trae tiempo disponible, guardar como override
+        if (tiempoDispImport > 0) {
+            const overrideKey = maquinaId + '_' + fecha;
+            DB.tiempoOverrides[overrideKey] = tiempoDispImport;
+        }
         imported++;
     });
     await saveArr('entries-maquinas', DB.maquinas);
+    await saveObj('config-tiempo-overrides', DB.tiempoOverrides);
     renderMaquinasTable();
     document.getElementById('import-maquinas').value = '';
     setStatus('status-maquinas', `Importados ${imported} registros (${ignored} ignorados).`);
@@ -626,10 +661,12 @@ function exportMaquinas() {
         MAQUINA: machineById(e.maquina)?.label || e.maquina,
         PRODUCTO: e.producto,
         NP: e.np,
+        'H.V.': e.hv || '',
         OPERADOR: e.operador,
         RRHH: e.rrhh,
         'CANT PROD': e.cant,
         TIEMPO: e.tiempo,
+        'TIEMPO DISP': e.tiempoDisp || '',
         COMENTARIOS: e.comentarios
     }));
     downloadExcel(data, 'produccion_maquinas.xlsx', 'PRODUCCION');
@@ -643,6 +680,8 @@ async function addManualEntry() {
         setStatus('status-manuales', 'La fecha es obligatoria.', true);
         return;
     }
+    // Asegurar que el tiempo esté calculado antes de guardar
+    calcularTiempoManual();
     const ops = {};
     OPERACIONES.forEach(op => {
         const cb = document.querySelector(`.m-op[value="${op}"]`);
@@ -654,6 +693,7 @@ async function addManualEntry() {
         fecha,
         producto: val('m-producto'),
         np: val('m-np'),
+        hv: val('m-hv'),
         operador: getOperadoresString('m-operadores-list'),
         rrhh: numval('m-rrhh'),
         cant: numval('m-cant'),
@@ -697,6 +737,7 @@ async function handleImportManuales(file) {
             fecha,
             producto: row['PRODUCTO'] || '',
             np: String(row['NP'] ?? ''),
+            hv: String(row['H.V.'] ?? ''),
             operador: row['OPERADOR'] || '',
             rrhh: Number(row['RRHH']) || 0,
             cant: Number(row['CANT PROD']) || 0,
@@ -719,6 +760,7 @@ function exportManuales() {
             FECHA: formatDateDisplay(e.fecha),
             PRODUCTO: e.producto,
             NP: e.np,
+            'H.V.': e.hv || '',
             OPERADOR: e.operador,
             RRHH: e.rrhh,
             'CANT PROD': e.cant,
@@ -883,6 +925,16 @@ async function renderResumenMaquina(forceRefresh = false) {
 
         const overrideKey = maquina + '_' + fecha;
         let tiempoDisp = DB.tiempoOverrides[overrideKey];
+
+        // Si no hay override manual, buscar si algún registro de producción capturó tiempo disponible
+        if (tiempoDisp === undefined) {
+            const regConTiempoDisp = entriesDia.find(e => e.tiempoDisp > 0);
+            if (regConTiempoDisp) {
+                tiempoDisp = regConTiempoDisp.tiempoDisp;
+            }
+        }
+
+        // Si aún no hay nada, usar el default por día de la semana
         if (tiempoDisp === undefined) {
             const def = defaultTiempoDisponible(maquina, fecha);
             tiempoDisp = def === null ? '' : def;
@@ -956,12 +1008,22 @@ async function renderResumenMaquina(forceRefresh = false) {
 
 async function updateTiempoOverride(maquina, fecha, value) {
     const key = maquina + '_' + fecha;
+    const numVal = value === '' ? '' : Number(value);
     if (value === '') {
         delete DB.tiempoOverrides[key];
     } else {
-        DB.tiempoOverrides[key] = Number(value);
+        DB.tiempoOverrides[key] = numVal;
     }
     await saveObj('config-tiempo-overrides', DB.tiempoOverrides);
+
+    // Sincronizar con Google Sheets
+    const rowOverride = {
+        FECHA: formatDateDisplay(fecha),
+        MAQUINA: machineById(maquina)?.label || maquina,
+        OVERRIDE: numVal
+    };
+    pushToSheets('TIEMPO_OVERRIDES', rowOverride);
+
     renderResumenMaquina();
 }
 
@@ -1043,6 +1105,7 @@ async function renderResumenManuales(forceRefresh = false) {
         FECHA: formatDateDisplay(e.fecha),
         PRODUCTO: e.producto,
         NP: e.np,
+        'H.V.': e.hv || '',
         OPERADOR: e.operador,
         RRHH: e.rrhh,
         'CANT PROD': e.cant,
@@ -1053,13 +1116,14 @@ async function renderResumenManuales(forceRefresh = false) {
     const totalCant = sum(rows, 'cant');
     const t = document.getElementById('tbl-resumen-manuales');
     t.querySelector('thead').innerHTML =
-        `<tr><th>Fecha</th><th>Producto</th><th>NP</th><th>Operador</th><th>RRHH</th><th>Cant. Prod.</th><th>Operaciones</th><th>Sub Proc</th></tr>`;
+        `<tr><th>Fecha</th><th>Producto</th><th>NP</th><th>H.V.</th><th>Operador</th><th>RRHH</th><th>Cant. Prod.</th><th>Operaciones</th><th>Sub Proc</th></tr>`;
     t.querySelector('tbody').innerHTML = (rows.length ?
         rows.map(e => `
             <tr>
                 <td>${formatDateDisplay(e.fecha)}</td>
                 <td class="left">${e.producto || ''}</td>
                 <td>${e.np || ''}</td>
+                <td>${e.hv || ''}</td>
                 <td class="left">${e.operador || ''}</td>
                 <td>${e.rrhh || 0}</td>
                 <td>${e.cant || 0}</td>
@@ -1067,8 +1131,8 @@ async function renderResumenManuales(forceRefresh = false) {
                 <td>${e.subproc || 0}</td>
             </tr>
         `).join('') :
-        `<tr><td colspan="8" class="empty">Sin registros este mes</td></tr>`) +
-        `<tr class="totals"><td colspan="5">Total</td><td>${totalCant}</td><td colspan="2"></td></tr>`;
+        `<tr><td colspan="9" class="empty">Sin registros este mes</td></tr>`) +
+        `<tr class="totals"><td colspan="6">Total</td><td>${totalCant}</td><td colspan="2"></td></tr>`;
 }
 
 function exportResumenManuales() {
@@ -1288,10 +1352,6 @@ async function renderFrecuenciaNP(forceRefresh = false) {
     drawBars('chart-frecnp', Object.entries(porNP), { limite: 8, sufijo: ' veces' });
 }
 
-async function renderTop5Maquina(maquina, datosMaquinasDelMes) {
-    const delMaquina = datosMaquinasDelMes.filter(e => e.maquina === maquina);
-    drawTop5Bars('chart-top5-maquina', delMaquina);
-}
 
 // ================================================================
 // LISTENER PARA CAMBIO DE MÁQUINA 
@@ -1305,12 +1365,22 @@ function onMaquinaChange() {
 
     // Clear completo: esta es una entrada nueva de máquina, a diferencia del
     // clear parcial de addMaquinaEntry (que conserva operador/RRHH para capturas seguidas)
-    ['f-producto', 'f-np', 'f-cant', 'f-tiempo', 'f-comentarios']
+    ['f-producto', 'f-np', 'f-cant', 'f-tiempo', 'f-comentarios', 'f-hv']
         .forEach(id => {
             const el = document.getElementById(id);
             if (el) el.value = '';
         });
+    // Limpiar tiempo disponible para que se recalcule con la nueva máquina
+    const tdEl = document.getElementById('f-tiempo-disp');
+    if (tdEl) {
+        tdEl.readOnly = false;
+        tdEl.classList.remove('bloqueado');
+        tdEl.value = '';
+    }
+    const tdMsg = document.getElementById('f-tiempo-disp-msg');
+    if (tdMsg) { tdMsg.style.display = 'none'; tdMsg.innerHTML = ''; }
     resetOperadorList('f-operadores-list', 'f-rrhh');
+    updateTiempoDispField();
 
     const maquina = machineById(maquinaActual);
     if (maquina) {
@@ -1318,6 +1388,91 @@ function onMaquinaChange() {
     }
 }
 window.onMaquinaChange = onMaquinaChange;
+
+function updateTiempoDispField() {
+    const maquina = val('f-maquina');
+    const fecha = val('f-fecha');
+    const el = document.getElementById('f-tiempo-disp');
+    const msgEl = document.getElementById('f-tiempo-disp-msg');
+    if (!el || !maquina || !fecha) return;
+
+    // Verificar si ya existe un tiempo disponible capturado para esta máquina+fecha
+    const existente = DB.maquinas.find(e => e.maquina === maquina && e.fecha === fecha && e.tiempoDisp > 0);
+
+    if (existente) {
+        // Ya está bloqueado: mostrar el valor capturado, no editable
+        el.value = existente.tiempoDisp;
+        el.readOnly = true;
+        el.classList.add('bloqueado');
+        if (msgEl) {
+            msgEl.style.display = 'flex';
+            msgEl.className = 'tiempo-disp-msg bloqueado';
+            msgEl.innerHTML = `🔒 Tiempo disponible ya registrado para ${machineById(maquina)?.label || maquina} <strong>${existente.tiempoDisp} min</strong>`;
+            //msgEl.innerHTML = `🔒 Tiempo disponible ya registrado para ${machineById(maquina)?.label || maquina} — <strong>${existente.tiempoDisp} min</strong>. Para cambiarlo, borra el primer registro de este día.`;
+        }
+    } else {
+        // No está bloqueado: precargar default si está vacío
+        el.readOnly = false;
+        el.classList.remove('bloqueado');
+        if (msgEl) {
+            msgEl.style.display = 'none';
+            msgEl.innerHTML = '';
+        }
+        if (el.value === '') {
+            const def = defaultTiempoDisponible(maquina, fecha);
+            el.value = def === null ? '' : def;
+        }
+    }
+}
+window.updateTiempoDispField = updateTiempoDispField;
+
+function onTiempoDispManualChange() {
+    const maquina = val('f-maquina');
+    const fecha = val('f-fecha');
+    const el = document.getElementById('f-tiempo-disp');
+    if (!el || el.readOnly || !maquina || !fecha) return;
+
+    // Cuando el usuario edita manualmente el tiempo disponible, guardarlo como override
+    // para que el resumen lo use, pero solo hasta que se guarde el primer registro
+    const valNum = Number(el.value);
+    if (valNum > 0) {
+        const overrideKey = maquina + '_' + fecha;
+        DB.tiempoOverrides[overrideKey] = valNum;
+        saveObj('config-tiempo-overrides', DB.tiempoOverrides);
+    }
+}
+window.onTiempoDispManualChange = onTiempoDispManualChange;
+
+function minutosEntreHoras(horaInicio, horaFin) {
+    if (!horaInicio || !horaFin) return 0;
+    const [h1, m1] = horaInicio.split(':').map(Number);
+    const [h2, m2] = horaFin.split(':').map(Number);
+    let min = (h2 * 60 + m2) - (h1 * 60 + m1);
+    if (min < 0) min += 24 * 60; // Cruza medianoche
+    return min;
+}
+
+function calcularTiempoMaquina() {
+    const inicio = val('f-hora-inicio');
+    const fin = val('f-hora-fin');
+    const min = minutosEntreHoras(inicio, fin);
+    const resEl = document.getElementById('f-tiempo-res');
+    const hiddenEl = document.getElementById('f-tiempo');
+    if (resEl) resEl.textContent = `= ${min} min`;
+    if (hiddenEl) hiddenEl.value = min;
+}
+window.calcularTiempoMaquina = calcularTiempoMaquina;
+
+function calcularTiempoManual() {
+    const inicio = val('m-hora-inicio');
+    const fin = val('m-hora-fin');
+    const min = minutosEntreHoras(inicio, fin);
+    const resEl = document.getElementById('m-tiempo-res');
+    const hiddenEl = document.getElementById('m-tiempo');
+    if (resEl) resEl.textContent = `= ${min} min`;
+    if (hiddenEl) hiddenEl.value = min;
+}
+window.calcularTiempoManual = calcularTiempoManual;
 
 
 /* ================================================================
@@ -1337,16 +1492,19 @@ function mapMaquinaRow(e) {
         MAQUINA: machineById(e.maquina)?.label || e.maquina,
         PRODUCTO: e.producto,
         NP: e.np,
+        'H.V.': e.hv || '',
         OPERADOR: e.operador,
         RRHH: e.rrhh,
         'CANT PROD': e.cant,
         TIEMPO: e.tiempo,
+        'TIEMPO DISP': e.tiempoDisp || '',
         COMENTARIOS: e.comentarios
     };
 }
 function mapManualRow(e) {
     const row = {
-        FECHA: formatDateDisplay(e.fecha), PRODUCTO: e.producto, NP: e.np, OPERADOR: e.operador,
+        FECHA: formatDateDisplay(e.fecha), PRODUCTO: e.producto, NP: e.np, 'H.V.': e.hv || '',
+        OPERADOR: e.operador,
         RRHH: e.rrhh, 'CANT PROD': e.cant, TIEMPO: e.tiempo
     };
     OPERACIONES.forEach(op => row[op] = (e.ops && e.ops[op]) ? 1 : '');
@@ -1415,7 +1573,15 @@ async function reenviarTodoASheets() {
         ...DB.manuales.map(e => ['MANUALES', mapManualRow(e)]),
         ...DB.paro.map(e => ['PARO', mapParoRow(e)]),
         ...DB.tarimas.map(e => ['TARIMAS', mapTarimaRow(e)]),
-        ...DB.contenedores.map(e => ['CONTENEDORES', mapContenedorRow(e)])
+        ...DB.contenedores.map(e => ['CONTENEDORES', mapContenedorRow(e)]),
+        ...Object.entries(DB.tiempoOverrides).map(([key, val]) => {
+            const [maquinaId, fecha] = key.split('_');
+            return ['TIEMPO_OVERRIDES', {
+                FECHA: formatDateDisplay(fecha),
+                MAQUINA: machineById(maquinaId)?.label || maquinaId,
+                OVERRIDE: val
+            }];
+        })
     ];
 
     if (!tareas.length) {
@@ -1476,11 +1642,20 @@ function parseSheetDate(v) {
 function convertirFilaMaquina(row) {
     const maquinaId = normalizeMachine(row.MAQUINA);
     if (!maquinaId) return null;
+    const tiempoDispSheet = Number(row['TIEMPO DISP']) || 0;
+    const fecha = parseSheetDate(row.FECHA);
+    // Si el Sheet trae tiempo disponible, guardarlo como override
+    if (tiempoDispSheet > 0 && fecha) {
+        const overrideKey = maquinaId + '_' + fecha;
+        DB.tiempoOverrides[overrideKey] = tiempoDispSheet;
+    }
     return {
-        id: uid(), fecha: parseSheetDate(row.FECHA), maquina: maquinaId,
-        producto: row.PRODUCTO || '', np: String(row.NP ?? ''), operador: row.OPERADOR || '',
+        id: uid(), fecha: fecha, maquina: maquinaId,
+        producto: row.PRODUCTO || '', np: String(row.NP ?? ''), hv: String(row['H.V.'] ?? ''),
+        operador: row.OPERADOR || '',
         rrhh: Number(row.RRHH) || 0, cant: Number(row['CANT PROD']) || 0,
-        tiempo: Number(row.TIEMPO) || 0, comentarios: row.COMENTARIOS || ''
+        tiempo: Number(row.TIEMPO) || 0, tiempoDisp: tiempoDispSheet,
+        comentarios: row.COMENTARIOS || ''
     };
 }
 function convertirFilaManual(row) {
@@ -1489,7 +1664,8 @@ function convertirFilaManual(row) {
     const subproc = Object.values(ops).reduce((a, b) => a + b, 0);
     return {
         id: uid(), fecha: parseSheetDate(row.FECHA), producto: row.PRODUCTO || '',
-        np: String(row.NP ?? ''), operador: row.OPERADOR || '', rrhh: Number(row.RRHH) || 0,
+        np: String(row.NP ?? ''), hv: String(row['H.V.'] ?? ''),
+        operador: row.OPERADOR || '', rrhh: Number(row.RRHH) || 0,
         cant: Number(row['CANT PROD']) || 0, tiempo: Number(row.TIEMPO) || 0,
         ops, subproc, comentarios: row.COMENTARIOS || ''
     };
@@ -1615,6 +1791,26 @@ async function fetchSheetsMonth(mes, anio, forceRefresh = false) {
 async function obtenerDatosResumen(mes, anio, forceRefresh = false) {
     const sheets = await fetchSheetsMonth(mes, anio, forceRefresh);
     if (sheets) {
+        // Aplicar overrides de tiempo desde Sheets sobre los locales
+        const overridesSheets = (sheets.TIEMPO_OVERRIDES || []);
+        let overridesNuevos = 0;
+        overridesSheets.forEach(row => {
+            const maquinaId = normalizeMachine(row.MAQUINA);
+            const fecha = parseSheetDate(row.FECHA);
+            const overrideVal = row.OVERRIDE !== undefined && row.OVERRIDE !== '' ? Number(row.OVERRIDE) : undefined;
+            if (maquinaId && fecha && overrideVal !== undefined && !isNaN(overrideVal)) {
+                const key = maquinaId + '_' + fecha;
+                // Solo actualizar si el valor de Sheets es diferente al local
+                if (DB.tiempoOverrides[key] !== overrideVal) {
+                    DB.tiempoOverrides[key] = overrideVal;
+                    overridesNuevos++;
+                }
+            }
+        });
+        if (overridesNuevos > 0) {
+            saveObj('config-tiempo-overrides', DB.tiempoOverrides);
+        }
+
         const cacheKey = `${mes}_${anio}`;
         const cacheado = !forceRefresh && SHEETS_CLIENT_CACHE[cacheKey] && (Date.now() - SHEETS_CLIENT_CACHE[cacheKey].ts < CACHE_TTL_MS);
         return { fuente: 'sheets', datos: sheets, cacheado };
@@ -1742,6 +1938,25 @@ async function importarDesdeSheets() {
         ['tarimas', 'entries-tarimas', 'TARIMAS', mapTarimaRow, convertirFilaTarima],
         ['contenedores', 'entries-contenedores', 'CONTENEDORES', mapContenedorRow, convertirFilaContenedor]
     ];
+
+    // Importar overrides de tiempo desde Sheets
+    const overridesSheets = datos['TIEMPO_OVERRIDES'] || [];
+    let overridesImportados = 0;
+    overridesSheets.forEach(row => {
+        const maquinaId = normalizeMachine(row.MAQUINA);
+        const fecha = parseSheetDate(row.FECHA);
+        const overrideVal = row.OVERRIDE !== undefined && row.OVERRIDE !== '' ? Number(row.OVERRIDE) : undefined;
+        if (maquinaId && fecha && overrideVal !== undefined && !isNaN(overrideVal)) {
+            const key = maquinaId + '_' + fecha;
+            if (DB.tiempoOverrides[key] !== overrideVal) {
+                DB.tiempoOverrides[key] = overrideVal;
+                overridesImportados++;
+            }
+        }
+    });
+    if (overridesImportados > 0) {
+        await saveObj('config-tiempo-overrides', DB.tiempoOverrides);
+    }
 
     let totalNuevos = 0;
     for (const [dbKey, storageKey, sheetKey, mapFn, convertFn] of conteos) {
