@@ -1,0 +1,232 @@
+/**
+ * WEBHOOK DE SINCRONIZACION — Panel de Produccion ↔ Google Sheets (v3.9 OPTIMIZADO)
+ * -----------------------------------------------------------------
+ * doPost: recibe registros del panel. Revisa duplicados antes de escribir.
+ * doGet:  entrega datos filtrados por ?mes=X&anio=Y. Cache de 5 min.
+ *         Si viene ?callback, responde JSONP. Si viene ?debug=1, diagnostico.
+ *
+ * INSTRUCCIONES:
+ * 1. Abre tu Google Sheet → Extensiones → Apps Script.
+ * 2. BORRA TODO el codigo anterior.
+ * 3. Pega ESTE codigo completo.
+ * 4. Guarda (Ctrl+S).
+ * 5. Implementar → Nueva implementacion → Web App.
+ *    - Ejecutar como: Yo
+ *    - Acceso: Cualquiera
+ * 6. Copia la URL que termina en /exec al panel web.
+ */
+
+function doPost(e) {
+  try {
+    var data = JSON.parse(e.postData.contents);
+    var sheetName = data.sheet;
+    var row = data.row;
+
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var sheet = ss.getSheetByName(sheetName);
+    if (!sheet) {
+      sheet = ss.insertSheet(sheetName);
+    }
+
+    var headers;
+    if (sheet.getLastRow() === 0) {
+      headers = Object.keys(row);
+      sheet.appendRow(headers);
+    } else {
+      headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+    }
+
+    var nuevaLlave = construirLlave_(row, headers);
+
+    if (sheet.getLastRow() > 1) {
+      var existentes = sheet.getRange(2, 1, sheet.getLastRow() - 1, headers.length).getValues();
+      for (var i = 0; i < existentes.length; i++) {
+        var filaObj = {};
+        for (var j = 0; j < headers.length; j++) filaObj[headers[j]] = existentes[i][j];
+        if (construirLlave_(filaObj, headers) === nuevaLlave) {
+          return ContentService
+            .createTextOutput(JSON.stringify({ ok: true, duplicado: true }))
+            .setMimeType(ContentService.MimeType.JSON);
+        }
+      }
+    }
+
+    var values = headers.map(function (h) {
+      return row[h] !== undefined ? row[h] : '';
+    });
+    sheet.appendRow(values);
+
+    return ContentService
+      .createTextOutput(JSON.stringify({ ok: true }))
+      .setMimeType(ContentService.MimeType.JSON);
+
+  } catch (err) {
+    return ContentService
+      .createTextOutput(JSON.stringify({ ok: false, error: String(err) }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+}
+
+function doGet(e) {
+  var HOJAS = ['MAQUINAS', 'MANUALES', 'PARO', 'TARIMAS', 'CONTENEDORES', 'TIEMPO_OVERRIDES'];
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var resultado = {};
+  var debugInfo = [];
+
+  var mesFiltro = (e && e.parameter && e.parameter.mes) ? parseInt(e.parameter.mes, 10) : null;
+  var anioFiltro = (e && e.parameter && e.parameter.anio) ? parseInt(e.parameter.anio, 10) : null;
+  var callback = (e && e.parameter && e.parameter.callback) ? e.parameter.callback : null;
+  var modoDebug = (e && e.parameter && e.parameter.debug) ? true : false;
+  var tz = Session.getScriptTimeZone();
+
+  if (callback && !/^[a-zA-Z0-9_]+$/.test(callback)) {
+    callback = null;
+  }
+
+  // CACHE: solo si hay filtro de mes/anio (el caso mas comun de resumenes)
+  var cacheKey = null;
+  var cache = CacheService.getScriptCache();
+  var cached = null;
+  if (mesFiltro && anioFiltro && !modoDebug) {
+    cacheKey = 'resumen_' + mesFiltro + '_' + anioFiltro;
+    cached = cache.get(cacheKey);
+    if (cached) {
+      if (callback) {
+        return ContentService
+          .createTextOutput(callback + '(' + cached + ');')
+          .setMimeType(ContentService.MimeType.JAVASCRIPT);
+      }
+      return ContentService
+        .createTextOutput(cached)
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+  }
+
+  function esFecha_(val) {
+    return Object.prototype.toString.call(val) === '[object Date]';
+  }
+
+  HOJAS.forEach(function (nombre) {
+    var sheet = ss.getSheetByName(nombre);
+    if (!sheet) {
+      if (modoDebug) debugInfo.push({ hoja: nombre, estado: 'NO_EXISTE', filas: 0 });
+      resultado[nombre] = [];
+      return;
+    }
+    if (sheet.getLastRow() < 2) {
+      if (modoDebug) debugInfo.push({ hoja: nombre, estado: 'VACIA', filas: 0 });
+      resultado[nombre] = [];
+      return;
+    }
+
+    var values = sheet.getDataRange().getValues();
+    var headers = values[0];
+    var idxFecha = headers.indexOf('FECHA');
+    var filas = [];
+    var filtradas = 0;
+    var descartadas = 0;
+
+    for (var i = 1; i < values.length; i++) {
+      var obj = {};
+      for (var j = 0; j < headers.length; j++) {
+        var val = values[i][j];
+        if (esFecha_(val)) {
+          val = Utilities.formatDate(val, tz, 'dd/MM/yyyy');
+        }
+        obj[headers[j]] = val;
+      }
+
+      if (mesFiltro && anioFiltro && idxFecha >= 0) {
+        var fechaCelda = values[i][idxFecha];
+        var pasaFiltro = false;
+
+        if (esFecha_(fechaCelda)) {
+          var mesStr = Utilities.formatDate(fechaCelda, tz, 'MM');
+          var anioStr = Utilities.formatDate(fechaCelda, tz, 'yyyy');
+          var mesNum = parseInt(mesStr, 10);
+          var anioNum = parseInt(anioStr, 10);
+          pasaFiltro = (mesNum === mesFiltro) && (anioNum === anioFiltro);
+        } else {
+          var fechaObj = parseFechaTexto_(String(fechaCelda || ''));
+          pasaFiltro = fechaObj && fechaObj.mes === mesFiltro && fechaObj.anio === anioFiltro;
+        }
+
+        if (pasaFiltro) {
+          filas.push(obj);
+          filtradas++;
+        } else {
+          descartadas++;
+        }
+      } else {
+        filas.push(obj);
+        filtradas++;
+      }
+    }
+
+    if (modoDebug) {
+      debugInfo.push({
+        hoja: nombre,
+        estado: 'OK',
+        totalFilas: values.length - 1,
+        filtradas: filtradas,
+        descartadas: descartadas,
+        idxFecha: idxFecha,
+        tz: tz
+      });
+    }
+
+    resultado[nombre] = filas;
+  });
+
+  var respuesta = modoDebug ? { datos: resultado, debug: debugInfo } : resultado;
+  var jsonTexto = JSON.stringify(respuesta);
+
+  // GUARDAR EN CACHE ANTES de cualquier return
+  if (cacheKey) {
+    try {
+      cache.put(cacheKey, jsonTexto, 300); // 5 minutos
+    } catch (err) {
+      console.error('Cache put error: ' + err);
+    }
+  }
+
+  if (callback) {
+    return ContentService
+      .createTextOutput(callback + '(' + jsonTexto + ');')
+      .setMimeType(ContentService.MimeType.JAVASCRIPT);
+  }
+
+  return ContentService
+    .createTextOutput(jsonTexto)
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+function parseFechaTexto_(s) {
+  if (!s) return null;
+  s = String(s).trim();
+  var m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+  if (m) {
+    var dia = parseInt(m[1], 10), mes = parseInt(m[2], 10), anio = parseInt(m[3], 10);
+    if (m[3].length === 2) anio = (anio < 50 ? 2000 : 1900) + anio;
+    return { dia: dia, mes: mes, anio: anio };
+  }
+  var m2 = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (m2) {
+    return { anio: parseInt(m2[1], 10), mes: parseInt(m2[2], 10), dia: parseInt(m2[3], 10) };
+  }
+  return null;
+}
+
+function construirLlave_(rowObj, headers) {
+  return headers.map(function (h) {
+    var v = rowObj[h];
+    if (v === null || v === undefined) v = '';
+    if (h === 'FECHA') {
+      var f = parseFechaTexto_(String(v));
+      return f ? (f.anio + '-' + f.mes + '-' + f.dia) : String(v).trim().toUpperCase();
+    }
+    var n = Number(v);
+    if (v !== '' && !isNaN(n)) return String(n);
+    return String(v).trim().toUpperCase();
+  }).join('|');
+}

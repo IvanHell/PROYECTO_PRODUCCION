@@ -466,6 +466,8 @@ input[type=file] {
     margin-right: 8px;
 }
 
+
+
 @keyframes spin {
     to { transform: rotate(360deg); }
 }
@@ -562,4 +564,16 @@ input#f-tiempo-disp.bloqueado {
     padding: 4px 10px;
     border-radius: 6px;
     white-space: nowrap;
+}
+
+/* C R E A D O R */
+footer {
+    grid-column: 1 / -1;
+    text-align: center;
+    margin-top: 20px;
+    padding-top: 15px;
+    border-top: 1px solid var(--light-color);
+    color: var(--dark-color);
+    font-size: 0.9rem;
+        
 }

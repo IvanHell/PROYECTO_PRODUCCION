@@ -3,14 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Panel de Producción — Máquinas VALLE_K</title>
+    <title>Panel de Producción de Captura</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐦‍🔥</text></svg>">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <link rel="stylesheet" href="css/styles.css">
 </head>
 <body>
     <!-- HEADER -->
     <header>
-        <h1>Panel de Producción — Máquinas VALLE 4.8.5 ("online")</h1>
+        <h1>Panel de Producción — Máquinas VALLE 4.9.5 ("RESUMAEN FUERA DE LOCAL")</h1>
         <p>Captura una sola vez, obtén los resúmenes automáticamente. Reemplaza los archivos alimentadores y el reporte final.</p>
     </header>
 
@@ -56,9 +57,9 @@
                                 <input type="time" id="f-hora-inicio" value="07:00" onchange="window.calcularTiempoMaquina()">
                                 <span class="horario-sep">a</span>
                                 <input type="time" id="f-hora-fin" value="17:00" onchange="window.calcularTiempoMaquina()">
-                                <span class="horario-res" id="f-tiempo-res">= 540 min</span>
+                                <span class="horario-res" id="f-tiempo-res">= 570 min</span>
                             </div>
-                            <input type="hidden" id="f-tiempo" value="540">
+                            <input type="hidden" id="f-tiempo" value="570">
                         </div>
                         <div>
                             <label>Tiempo Disponible (min)</label>
@@ -135,9 +136,9 @@
                                 <input type="time" id="m-hora-inicio" value="07:00" onchange="window.calcularTiempoManual()">
                                 <span class="horario-sep">a</span>
                                 <input type="time" id="m-hora-fin" value="17:00" onchange="window.calcularTiempoManual()">
-                                <span class="horario-res" id="m-tiempo-res">= 540 min</span>
+                                <span class="horario-res" id="m-tiempo-res">= 570 min</span>
                             </div>
-                            <input type="hidden" id="m-tiempo" value="540">
+                            <input type="hidden" id="m-tiempo" value="570">
                         </div>
                     </div>
                     <label style="margin-top:12px">Operaciones realizadas (marca todas las que apliquen)</label>
@@ -215,7 +216,8 @@
                 <button class="subtab-btn" data-sub="res-manuales">Manuales (general)</button>
                 <button class="subtab-btn" data-sub="res-tarimas">Tarimas</button>
                 <button class="subtab-btn" data-sub="res-contenedores">Contenedores</button>
-                <button class="subtab-btn" data-sub="res-top5">Top 5 Productos</button>
+                <button class="subtab-btn" data-sub="res-paros">⏱️ Paros (Pareto)</button> <!--nueva implementacion-->
+                <!--<button class="subtab-btn" data-sub="res-top5">Top 5 Productos</button>-->
                 <button class="subtab-btn" data-sub="res-frecnp">Frecuencia de NP</button>
             </div>
 
@@ -310,7 +312,7 @@
             </div>
 
             <!-- Resumen: Top 5 Productos -->
-            <div class="subpanel" id="res-top5">
+            <!--<div class="subpanel" id="res-top5">
                 <div class="card">
                     <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(150px,220px));">
                         <div><label>Mes</label><select id="rtop-mes"></select></div>
@@ -329,7 +331,7 @@
                 <div class="card">
                     <div id="chart-top5"></div>
                 </div>
-            </div>
+            </div>-->
 
             <!-- Resumen: Frecuencia de Números de Parte -->
             <div class="subpanel" id="res-frecnp">
@@ -355,6 +357,27 @@
                     <div id="chart-frecnp"></div>
                 </div>
             </div>
+
+            <!-- pareto -->
+        <div class="subpanel" id="res-paros">
+            <div class="card">
+             <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(150px,220px));">
+             <div><label>Mes</label><select id="rp-mes"></select></div>
+            <div><label>Año</label><input type="number" id="rp-anio" value="2026"></div>
+        </div>
+            <div class="toolbar">
+                <button class="btn secondary" onclick="window.renderFrecuenciaParos()">Generar Pareto</button>
+            <button class="btn ghost" onclick="window.exportFrecuenciaParos()">⬇ Descargar Excel</button>
+        </div>
+        <p class="note">
+            Barras = minutos totales de paro por motivo. % acumulado = cuánto del mes se come cada motivo.
+            La regla del 80/20 indica que pocos motivos causan la mayoría del tiempo perdido.
+        </p>
+         </div>
+        <div class="card" id="chart-paros-container"></div>
+        </div>
+
+
         </div>
 
         <!-- ===================== PANEL CONFIGURACIÓN ===================== -->
@@ -370,7 +393,7 @@
                 <div class="grid" style="grid-template-columns:1fr;">
                     <div>
                         <label>URL del Web App de Google Apps Script (termina en /exec)</label>
-                        <input type="text" id="cfg-webhook-url" placeholder="https://script.google.com/macros/s/XXXXXXXX/exec">
+                        <input type="text" id="cfg-webhook-url" placeholder="https://script.google.com/macros/s/XXXXXXXX/exec"> <!--Esta configuracion solo es ejemplificativa-->
                     </div>
                 </div>
                 <div class="toolbar" style="margin-top:10px;">
@@ -385,6 +408,7 @@
                 </div>
             </div>
 
+            
             <div class="card">
                 <h2>Reenviar registros ya capturados</h2>
                 <p class="note">
@@ -397,7 +421,9 @@
                 <span class="status" id="status-reenvio"></span>
             </div>
 
-            <div class="card">
+
+            <!--este paneles pararecuperar el mes actual, idea descartada por cache temporal-->
+           <!-- <div class="card">
                 <h2>Recuperar el mes actual desde Google Sheets</h2>
                 <p class="note">
                     Trae y guarda localmente <strong>solo el mes en curso</strong> — útil si alguien
@@ -410,9 +436,16 @@
                 </p>
                 <button class="btn secondary" onclick="window.importarDesdeSheets()">⬇ Recuperar mes actual desde Sheets</button>
                 <span class="status" id="status-importar-sheets"></span>
-            </div>
+            </div>-->
+
+
         </div>
     </div>
+
+        <!--C R E A D O R-->
+    <footer> 
+        <p>By: Ing. Carlos Ivan Chavez Lopez &copy; 2026</p>
+    </footer>
 
     <!-- Lista de productos sugeridos: el campo Producto sigue aceptando cualquier texto libre -->
     <datalist id="producto-options">

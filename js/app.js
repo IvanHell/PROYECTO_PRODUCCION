@@ -418,6 +418,49 @@ function setMonthSelects() {
     });
 }
 
+/* ======================= HERENCIA DE HORARIOS ======================= */
+
+const LAST_END_KEY = LS_PREFIX + 'ultima-hora-fin-';
+
+function guardarUltimaHoraFin(contexto, horaFin, fecha) {
+    try {
+        localStorage.setItem(LAST_END_KEY + contexto, JSON.stringify({ hora: horaFin, fecha }));
+    } catch(e) {}
+}
+
+function obtenerUltimaHoraFin(contexto, fechaActual) {
+    try {
+        const raw = localStorage.getItem(LAST_END_KEY + contexto);
+        if (!raw) return null;
+        const obj = JSON.parse(raw);
+        return obj.fecha === fechaActual ? obj.hora : null;
+    } catch(e) { return null; }
+}
+
+function minutosDesdeMedianoche(hora) {
+    const [h, m] = hora.split(':').map(Number);
+    return h * 60 + m;
+}
+
+// Precarga la hora de inicio heredada y, si es necesario, resetea el fin a 17:00
+function aplicarHoraHerencia(inputInicioId, inputFinId, contexto, fechaActual) {
+    const ultima = obtenerUltimaHoraFin(contexto, fechaActual);
+    if (!ultima) return;
+    const elInicio = document.getElementById(inputInicioId);
+    const elFin   = document.getElementById(inputFinId);
+    if (!elInicio) return;
+    
+    elInicio.value = ultima;
+    
+    // Si el fin queda antes o igual al inicio, lo reseteamos a 17:00 para evitar 0 min
+    if (elFin && minutosDesdeMedianoche(elFin.value) <= minutosDesdeMedianoche(ultima)) {
+        elFin.value = '17:00';
+    }
+    
+    if (inputInicioId === 'f-hora-inicio') calcularTiempoMaquina();
+    if (inputInicioId === 'm-hora-inicio') calcularTiempoManual();
+}
+
 /* ================================================================
    EXCEL IMPORT / EXPORT
    ================================================================ */
@@ -596,11 +639,17 @@ async function addMaquinaEntry() {
     ['f-producto', 'f-np', 'f-cant', 'f-tiempo', 'f-comentarios', 'f-hv']
         .forEach(id => document.getElementById(id).value = '');
 
+    // >>> HERENCIA DE HORARIO <<<
+    const finGuardado = val('f-hora-fin');
+    guardarUltimaHoraFin(maquina, finGuardado, fecha);
+    aplicarHoraHerencia('f-hora-inicio', 'f-hora-fin', maquina, fecha);
+    // -----------------------------
+
     // Si acabamos de registrar el primer tiempo disponible del día, bloquear el campo
     if (!existente && tiempoDisp > 0) {
         updateTiempoDispField();
     }
-    setStatus('status-maquinas', 'Guardado ✓');
+    setStatus('status-maquinas', 'Guardado ✓ — siguiente captura desde las ' + finGuardado);
     renderMaquinasTable();
 }
 
@@ -709,7 +758,14 @@ async function addManualEntry() {
         .forEach(id => document.getElementById(id).value = '');
     document.querySelectorAll('.m-op').forEach(cb => cb.checked = false);
     document.getElementById('m-subproc').value = '';
-    setStatus('status-manuales', 'Guardado ✓');
+    
+    // >>> HERENCIA DE HORARIO <<<
+    const finGuardado = val('m-hora-fin');
+    guardarUltimaHoraFin('manual', finGuardado, fecha);
+    aplicarHoraHerencia('m-hora-inicio', 'm-hora-fin', 'manual', fecha);
+    // -----------------------------
+    
+    setStatus('status-manuales', 'Guardado ✓ — siguiente captura desde las ' + finGuardado);
     renderManualesTable();
 }
 
@@ -803,6 +859,106 @@ async function deleteParoEntry(id) {
     await saveArr('entries-paro', DB.paro);
     renderParoTable();
 }
+
+let lastFrecuenciaParosRows = [];
+
+async function renderFrecuenciaParos(forceRefresh = false) {
+    const mes = parseInt(val('rp-mes'), 10);
+    const anio = parseInt(val('rp-anio'), 10);
+
+    const resultado = await obtenerDatosResumen(mes, anio, forceRefresh);
+    const datosSheets = resultado.datos;
+    mostrarFuenteDatos('res-paros', resultado.fuente, resultado.cacheado);
+
+    const rows = (datosSheets.PARO || [])
+        .map(convertirFilaParo)
+        .filter(Boolean);
+
+    // Agrupar por motivo
+    const porMotivo = {};
+    rows.forEach(e => {
+        const motivo = (e.motivo || 'SIN MOTIVO').trim().toUpperCase();
+        if (!porMotivo[motivo]) porMotivo[motivo] = { veces: 0, minutos: 0 };
+        porMotivo[motivo].veces += 1;
+        porMotivo[motivo].minutos += Number(e.minutos) || 0;
+    });
+
+    // Convertir a array y ordenar por minutos (descendente)
+    let entries = Object.entries(porMotivo).map(([motivo, data]) => ({
+        motivo, veces: data.veces, minutos: data.minutos
+    })).sort((a, b) => b.minutos - a.minutos);
+
+    const totalMinutos = entries.reduce((s, e) => s + e.minutos, 0);
+    if (!totalMinutos) {
+        document.getElementById('chart-paros-container').innerHTML = 
+            '<div class="empty">Sin registros de paro este mes</div>';
+        return;
+    }
+
+    // Calcular % acumulado
+    let acum = 0;
+    entries = entries.map(e => {
+        acum += e.minutos;
+        return { ...e, pct: Math.round((e.minutos / totalMinutos) * 100), pctAcum: Math.round((acum / totalMinutos) * 100) };
+    });
+
+    // Guardar para exportar
+    lastFrecuenciaParosRows = entries.map(e => ({
+        MOTIVO: e.motivo,
+        VECES: e.veces,
+        MINUTOS: e.minutos,
+        '% DEL TOTAL': e.pct,
+        '% ACUMULADO': e.pctAcum
+    }));
+
+    const max = entries[0].minutos;
+    const limite80 = entries.findIndex(e => e.pctAcum > 80); // Último índice que forma el 80%
+
+    // Renderizar
+    const cont = document.getElementById('chart-paros-container');
+    cont.innerHTML = `
+        <div style="display:grid; grid-template-columns: 180px 1fr 70px 60px 60px; gap:8px; align-items:center; font-size:12px; font-weight:bold; color:var(--sub); margin-bottom:6px; padding:0 4px;">
+            <div>Motivo</div>
+            <div style="text-align:center;">Minutos totales (% acumulado)</div>
+            <div style="text-align:center;">Veces</div>
+            <div style="text-align:center;">% Ind.</div>
+            <div style="text-align:center;">% Acum.</div>
+        </div>
+        ${entries.map((e, i) => {
+            const barPct = max ? Math.round((e.minutos / max) * 100) : 0;
+            const esPareto = i <= limite80; // Los que forman el 80%
+            return `
+            <div style="display:grid; grid-template-columns: 180px 1fr 70px 60px 60px; gap:8px; align-items:center; margin-bottom:10px; padding:8px; border-radius:8px; ${esPareto ? 'background:#fef3c7; border:1px solid #fcd34d;' : ''}">
+                <div style="font-size:12.5px; font-weight:bold; word-break:break-word;" title="${e.motivo}">${e.motivo}</div>
+                <div>
+                    <div style="display:flex; align-items:center; gap:8px;">
+                        <div class="top5-bar-bg" style="flex:1; height:24px;">
+                            <div class="top5-bar-fill" style="width:${barPct}%; ${esPareto ? 'background:linear-gradient(90deg, #d97706, #f59e0b);' : 'background:linear-gradient(90deg, var(--accent), #60a5fa);'}"></div>
+                        </div>
+                        <span style="font-size:11px; color:var(--sub); white-space:nowrap;">${e.minutos} min</span>
+                    </div>
+                    ${esPareto && i === limite80 ? '<div style="font-size:10px; color:#92400e; margin-top:2px;">▲ Aquí se concentra el 80% del tiempo perdido</div>' : ''}
+                </div>
+                <div style="text-align:center; font-size:12px;">${e.veces}</div>
+                <div style="text-align:center; font-size:12px; font-weight:bold;">${e.pct}%</div>
+                <div style="text-align:center; font-size:12px; font-weight:bold; ${e.pctAcum >= 80 ? 'color:var(--bad);' : ''}">${e.pctAcum}%</div>
+            </div>
+            `;
+        }).join('')}
+        <div style="margin-top:12px; padding:10px; background:#f8f9fb; border-radius:8px; font-size:12px; color:var(--sub);">
+            <strong>Total minutos de paro:</strong> ${totalMinutos} min &nbsp;|&nbsp; 
+            <strong>Motivos distintos:</strong> ${entries.length} &nbsp;|&nbsp; 
+            <strong>Regla 80/20:</strong> Los primeros ${limite80 + 1} motivos causan el 80% del tiempo perdido.
+        </div>
+    `;
+}
+
+function exportFrecuenciaParos() {
+    if (!lastFrecuenciaParosRows.length) { alert('Genera el Pareto primero.'); return; }
+    downloadExcel(lastFrecuenciaParosRows, `pareto_paros_${val('rp-mes')}_${val('rp-anio')}.xlsx`, 'PAROS_PARETO');
+}
+
+
 
 // ===== TARIMAS =====
 
@@ -1363,24 +1519,16 @@ function onMaquinaChange() {
     const maquinaActual = selector.value;
     if (!maquinaActual) return;
 
-    // Clear completo: esta es una entrada nueva de máquina, a diferencia del
-    // clear parcial de addMaquinaEntry (que conserva operador/RRHH para capturas seguidas)
+    // Clear completo...
     ['f-producto', 'f-np', 'f-cant', 'f-tiempo', 'f-comentarios', 'f-hv']
-        .forEach(id => {
-            const el = document.getElementById(id);
-            if (el) el.value = '';
-        });
-    // Limpiar tiempo disponible para que se recalcule con la nueva máquina
-    const tdEl = document.getElementById('f-tiempo-disp');
-    if (tdEl) {
-        tdEl.readOnly = false;
-        tdEl.classList.remove('bloqueado');
-        tdEl.value = '';
-    }
-    const tdMsg = document.getElementById('f-tiempo-disp-msg');
-    if (tdMsg) { tdMsg.style.display = 'none'; tdMsg.innerHTML = ''; }
-    resetOperadorList('f-operadores-list', 'f-rrhh');
-    updateTiempoDispField();
+        .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+    
+    // ... (todo lo demás que ya tienes: tiempo disp, operadores, etc.) ...
+
+    // >>> HERENCIA DE HORARIO <<<
+    const hoy = getToday();
+    aplicarHoraHerencia('f-hora-inicio', 'f-hora-fin', maquinaActual, hoy);
+    // -----------------------------
 
     const maquina = machineById(maquinaActual);
     if (maquina) {
@@ -1990,6 +2138,7 @@ async function boot() {
     fillMonthSelect('rc-mes');
     fillMonthSelect('rtop-mes');
     fillMonthSelect('rnp-mes');
+    fillMonthSelect('rp-mes');
 
     buildChecklist();
     initOperadorList('f-operadores-list', 'f-rrhh');
@@ -2001,8 +2150,15 @@ async function boot() {
     // Cargar datos
     await loadAll();
 
+    // Precargar herencia de horarios del día actual
+    const hoy = getToday();
+    const maqInicial = document.getElementById('f-maquina').value;
+    if (maqInicial) aplicarHoraHerencia('f-hora-inicio', 'f-hora-fin', maqInicial, hoy);
+    aplicarHoraHerencia('m-hora-inicio', 'm-hora-fin', 'manual', hoy);
+
     // Precargar configuración de Google Sheets en el formulario
-    document.getElementById('cfg-webhook-url').value = SHEETS_CONFIG.url || 'https://script.google.com/macros/s/AKfycbxkND7SULKytuYTQog2DDx6XSQ8XtUxaJhii0PLqrTQ5uZSOc5ZsRWClfuQImcCnJCg/exec';
+    //aqui se precargan los datos 
+    document.getElementById('cfg-webhook-url').value = SHEETS_CONFIG.url || 'https://script.google.com/macros/s/AKfycbxkND7SULKytuYTQog2DDx6XSQ8XtUxaJhii0PLqrTQ5uZSOc5ZsRWClfuQImcCnJCg/exec'; //esta url es la que se puede remplazar recuerda dejar ('';)
     document.getElementById('cfg-webhook-enabled').checked = !!SHEETS_CONFIG.enabled;
 
     // Renderizar tablas
@@ -2060,6 +2216,9 @@ window.exportResumenContenedores = exportResumenContenedores;
 
 window.renderTop5 = renderTop5;
 window.renderFrecuenciaNP = renderFrecuenciaNP;
+
+window.renderFrecuenciaParos = renderFrecuenciaParos;
+window.exportFrecuenciaParos = exportFrecuenciaParos;
 
 // UI
 window.updateSubProc = updateSubProc;
