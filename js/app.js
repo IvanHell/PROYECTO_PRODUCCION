@@ -412,7 +412,7 @@ function setDateInputs() {
 
 function setMonthSelects() {
     const month = getCurrentMonth();
-    ['r-mes', 'rk-mes', 'rm-mes', 'rt-mes', 'rc-mes', 'rtop-mes', 'rnp-mes'].forEach(id => {
+    ['r-mes', 'rk-mes', 'rm-mes', 'rt-mes', 'rc-mes', 'rtop-mes', 'rnp-mes', 'rp-mes'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.value = month;
     });
@@ -866,7 +866,17 @@ async function renderFrecuenciaParos(forceRefresh = false) {
     const mes = parseInt(val('rp-mes'), 10);
     const anio = parseInt(val('rp-anio'), 10);
 
+    //---------------------------
+    const contSpinner = document.getElementById('chart-paros-container');
+    if (contSpinner) contSpinner.innerHTML = '<div class="empty"><div class="spinner-inline"></div> Consultando datos…</div>';
+    //----------------------------
+
     const resultado = await obtenerDatosResumen(mes, anio, forceRefresh);
+//-------------------
+    const contResultado = document.getElementById('chart-paros-container');
+if (contResultado) contResultado.innerHTML = '...pareto...';
+//-------------------
+
     const datosSheets = resultado.datos;
     mostrarFuenteDatos('res-paros', resultado.fuente, resultado.cacheado);
 
@@ -951,6 +961,7 @@ async function renderFrecuenciaParos(forceRefresh = false) {
             <strong>Regla 80/20:</strong> Los primeros ${limite80 + 1} motivos causan el 80% del tiempo perdido.
         </div>
     `;
+
 }
 
 function exportFrecuenciaParos() {
@@ -1196,6 +1207,9 @@ function exportResumenMaquina() {
 async function renderResumenKit(forceRefresh = false) {
     const mes = parseInt(val('rk-mes'), 10);
     const anio = parseInt(val('rk-anio'), 10);
+    
+    const tbody = document.querySelector('#tbl-resumen-kit tbody');
+    if (tbody) tbody.innerHTML = `<tr><td colspan="4" class="empty"><div class="spinner-inline"></div> Consultando datos…</td></tr>`;
 
     const resultado = await obtenerDatosResumen(mes, anio, forceRefresh);
     const datosSheets = resultado.datos;
@@ -1243,6 +1257,9 @@ async function renderResumenManuales(forceRefresh = false) {
     const anio = parseInt(val('rm-anio'), 10);
     const filtroProd = val('rm-producto').toUpperCase();
 
+    const tbody = document.querySelector('#tbl-resumen-manuales tbody');//cambio tbl-resumen
+    if (tbody) tbody.innerHTML = `<tr><td colspan="4" class="empty"><div class="spinner-inline"></div> Consultando datos…</td></tr>`;
+    
     const resultado = await obtenerDatosResumen(mes, anio, forceRefresh);
     const datosSheets = resultado.datos;
     mostrarFuenteDatos('res-manuales', resultado.fuente, resultado.cacheado);
@@ -1302,39 +1319,61 @@ function exportResumenManuales() {
 
 async function renderResumenTarimas(forceRefresh = false) {
     const mes = parseInt(val('rt-mes'), 10);
-    const anio = parseInt(val('rt-anio'), 10);
-
+    const anio = parseInt(val('rt-anio'), 10);  
+    
+    const tbody = document.querySelector('#tbl-resumen-tarimas tbody');//cambio tbl-resumen
+    if (tbody) tbody.innerHTML = `<tr><td colspan="4" class="empty"><div class="spinner-inline"></div> Consultando datos…</td></tr>`;
+    
     const resultado = await obtenerDatosResumen(mes, anio, forceRefresh);
     const datosSheets = resultado.datos;
     mostrarFuenteDatos('res-tarimas', resultado.fuente, resultado.cacheado);
 
-    // SOLO datos de Sheets
     const rows = (datosSheets.TARIMAS || [])
         .map(convertirFilaTarima)
         .filter(Boolean);
 
-    const porPersona = {};
-    rows.forEach(e => {
-        const key = (e.persona || 'Sin nombre') + ' | ' + (e.tipo || '');
-        porPersona[key] = (porPersona[key] || 0) + (Number(e.cant) || 0);
-    });
+    const diasEnMes = getDaysInMonth(anio, mes);
+    let totalMes = 0;
+    const rowsHtml = [];
+    lastResumenTarimasRows = [];
 
-    const entries = Object.entries(porPersona);
-    lastResumenTarimasRows = entries.map(([k, v]) => {
-        const [persona, tipo] = k.split(' | ');
-        return { PERSONA: persona, TIPO: tipo, TOTAL: v };
-    });
+    for (let d = 1; d <= diasEnMes; d++) {
+        const fecha = `${anio}-${pad2(mes)}-${pad2(d)}`;
+        const dow = getDayOfWeek(fecha);
+        const entriesDia = rows.filter(e => e.fecha === fecha);
+        const cantDia = sum(entriesDia, 'cant');
+
+        const personas = [...new Set(entriesDia.map(e => e.persona).filter(x => x))].join(', ') || '-';
+        const tipos    = [...new Set(entriesDia.map(e => e.tipo).filter(x => x))].join(', ') || '-';
+
+        totalMes += cantDia;
+
+        rowsHtml.push(`<tr>
+            <td>${DIAS_ABR[dow]}</td>
+            <td>${formatDateDisplay(fecha)}</td>
+            <td class="left">${personas}</td>
+            <td class="left">${tipos}</td>
+            <td>${cantDia || ''}</td>
+        </tr>`);
+
+        lastResumenTarimasRows.push({
+            DIA: DIAS_ABR[dow],
+            FECHA: formatDateDisplay(fecha),
+            PERSONAS: personas,
+            TIPOS: tipos,
+            CANTIDAD: cantDia
+        });
+    }
 
     const t = document.getElementById('tbl-resumen-tarimas');
     t.querySelector('thead').innerHTML =
-        `<tr><th>Persona</th><th>Tipo</th><th>Total del mes</th></tr>`;
-    t.querySelector('tbody').innerHTML = entries.length ?
-        entries.map(([k, v]) => {
-            const [persona, tipo] = k.split(' | ');
-            return `<tr><td class="left">${persona}</td><td class="left">${tipo}</td><td>${v}</td></tr>`;
-        }).join('') :
-        `<tr><td colspan="3" class="empty">Sin registros este mes</td></tr>`;
+        `<tr><th>Día</th><th>Fecha</th><th>Persona(s)</th><th>Tipo(s)</th><th>Cantidad</th></tr>`;
+    t.querySelector('tbody').innerHTML = rowsHtml.join('') +
+        `<tr class="totals"><td colspan="4">Total del mes</td><td>${totalMes}</td></tr>`;
 }
+
+
+
 function exportResumenTarimas() {
     if (!lastResumenTarimasRows.length) { alert('Genera el resumen primero.'); return; }
     downloadExcel(lastResumenTarimasRows,
@@ -1342,11 +1381,16 @@ function exportResumenTarimas() {
         'TARIMAS');
 }
 
+
+
 // ===== RESUMEN: CONTENEDORES =====
 
 async function renderResumenContenedores(forceRefresh = false) {
     const mes = parseInt(val('rc-mes'), 10);
     const anio = parseInt(val('rc-anio'), 10);
+
+    //const tbody = document.querySelector('#tbl-resumen-contenedores');//cambio tbl-resumen
+    //if (tbody) tbody.innerHTML = `<tr><td colspan="4" class="empty"><div class="spinner-inline"></div> Consultando datos…</td></tr>`;
 
     const resultado = await obtenerDatosResumen(mes, anio, forceRefresh);
     const datosSheets = resultado.datos;
