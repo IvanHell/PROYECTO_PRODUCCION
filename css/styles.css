@@ -545,7 +545,7 @@ input#f-tiempo-disp.bloqueado {
 }
 
 .horario-calc input[type="time"] {
-    width: 100px;
+    width: 111px;
     padding: 7px 8px;
     font-size: 13px;
 }
