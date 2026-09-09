@@ -379,11 +379,11 @@ input[type=file] {
     cursor: help;
     border-bottom: 1px dotted var(--sub);
 }
-.op-tooltip::after {
+.op-tooltip::after { /*posicion de texto*/
     content: attr(data-operadores);
     position: absolute;
     bottom: 75%;
-    left: 50%;
+    left: 125%;
     transform: translateX(-50%);
     background-color: var(--ink);
     color: #ffffff;
@@ -391,7 +391,7 @@ input[type=file] {
     border-radius: 6px;
     font-size: 11.5px;
     font-weight: normal;
-    white-space: nowrap;
+    white-space: nowrap; /*nowrap*/
     box-shadow: 0 4px 10px rgba(0,0,0,0.18);
     opacity: 0;
     visibility: hidden;
@@ -399,11 +399,11 @@ input[type=file] {
     z-index: 30;
     pointer-events: none;
 }
-.op-tooltip::before {
+.op-tooltip::before { /*flecha*/
     content: '';
     position: absolute;
     bottom: 50%;
-    left: 50%;
+    left: 75%;
     transform: translateX(-50%);
     border: 5px solid transparent;
     border-top-color: var(--ink);
