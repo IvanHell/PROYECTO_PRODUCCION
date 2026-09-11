@@ -11,7 +11,7 @@
 <body>
     <!-- HEADER -->
     <header>
-        <h1>Panel de Producción — Máquinas VALLE 4.9.5 ("Online")</h1>
+        <h1>Panel de Producción — Máquinas VALLE 5.0 ("Online")</h1>
         <p>Captura una sola vez, obtén los resúmenes automáticamente. Reemplaza los archivos alimentadores y el reporte final.</p>
     </header>
 
@@ -253,6 +253,7 @@
             <div class="subpanel" id="res-kit">
                 <div class="card">
                     <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(150px,220px));">
+                       <!-- <div><label>Producto (opcional)</label></div> <input id="rm-producto" placeholder="Todos">-->
                         <div><label>Mes</label><select id="rk-mes"></select></div>
                         <div><label>Año</label><input type="number" id="rk-anio" value="2026"></div>
                     </div>
@@ -311,27 +312,7 @@
                 <div class="card"><div class="tablewrap"><table id="tbl-resumen-contenedores"><thead></thead><tbody></tbody></table></div></div>
             </div>
 
-            <!-- Resumen: Top 5 Productos -->
-            <!--<div class="subpanel" id="res-top5">
-                <div class="card">
-                    <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(150px,220px));">
-                        <div><label>Mes</label><select id="rtop-mes"></select></div>
-                        <div><label>Año</label><input type="number" id="rtop-anio" value="2026"></div>
-                        <div><label>Fuente</label>
-                            <select id="rtop-fuente">
-                                <option value="ambos">Máquinas + Manuales</option>
-                                <option value="maquinas">Solo Máquinas</option>
-                                <option value="manuales">Solo Manuales</option>
-                            </select>
-                        </div>
-                    </div>
-                    <button class="btn secondary" onclick="window.renderTop5()">Generar</button>
-                    <p class="note">Top 5 productos con mayor cantidad producida (CANT PROD) en el mes seleccionado.</p>
-                </div>
-                <div class="card">
-                    <div id="chart-top5"></div>
-                </div>
-            </div>-->
+            
 
             <!-- Resumen: Frecuencia de Números de Parte -->
             <div class="subpanel" id="res-frecnp">
@@ -362,8 +343,9 @@
         <div class="subpanel" id="res-paros">
             <div class="card">
              <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(150px,220px));">
-             <div><label>Mes</label><select id="rp-mes"></select></div>
-            <div><label>Año</label><input type="number" id="rp-anio" value="2026"></div>
+             <div><label>Máquina</label><select id="rp-maquina"></select></div>
+             <div><label>Mes</label><select id="rp-mes"></select></div>        
+             <div><label>Año</label><input type="number" id="rp-anio" value="2026"></div>
         </div>
             <div class="toolbar">
                 <button class="btn secondary" onclick="window.renderFrecuenciaParos()">Generar Pareto</button>
@@ -420,24 +402,6 @@
                 <button class="btn ghost" onclick="window.reenviarTodoASheets()">⬆ Reenviar todo a Google Sheets</button>
                 <span class="status" id="status-reenvio"></span>
             </div>
-
-
-            <!--este paneles pararecuperar el mes actual, idea descartada por cache temporal-->
-           <!-- <div class="card">
-                <h2>Recuperar el mes actual desde Google Sheets</h2>
-                <p class="note">
-                    Trae y guarda localmente <strong>solo el mes en curso</strong> — útil si alguien
-                    capturó directo en el Sheet, o como respaldo si algo se perdió en el panel.
-                    Los meses anteriores NUNCA se guardan aquí a propósito: viven solo en Sheets y
-                    se consultan automáticamente (sin guardarse) cada vez que generas su Resumen.
-                    Solo se agrega lo que no esté ya en el panel — no se duplica.
-                    Requiere que hayas actualizado el código de Apps Script a la versión con
-                    lectura (doGet) — revisa el archivo que te compartí.
-                </p>
-                <button class="btn secondary" onclick="window.importarDesdeSheets()">⬇ Recuperar mes actual desde Sheets</button>
-                <span class="status" id="status-importar-sheets"></span>
-            </div>-->
-
 
         </div>
     </div>

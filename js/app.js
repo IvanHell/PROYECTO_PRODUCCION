@@ -1,20 +1,20 @@
 /* ===================================================================
-   PANEL DE PRODUCCIÓN — MÁQUINAS VALLE (v2)
+   PANEL DE PRODUCCION — MAQUINAS VALLE (v2)
    Todos los JavaScript en un solo archivo
-   Incluye: Máquinas, Manuales, Paro, Tarimas, Contenedores + Excel
+   Incluye: Maquinas, Manuales, Paro, Tarimas, Contenedores + Excel
    =================================================================== */
 
-/* ======================= CONFIGURACIÓN ======================= */
+/* ======================= CONFIGURACION ======================= */
 
 const MACHINES = [
     { id: 'FLEXO', label: 'Flexo', piezasMin: 26, ajuste: 30, flexo: true, aliases: ['FLEXO'] },
     { id: 'ROLADORA', label: 'Roladora I', piezasMin: 10, ajuste: 15, aliases: ['ROLADORA', 'ROLADORA I'] },
     { id: 'RANURADORA', label: 'Ranuradora', piezasMin: 37, ajuste: 35, aliases: ['RANURADORA'] },
     { id: 'T_ROTATIVA', label: 'Troqueladora Rotativa', piezasMin: 35, ajuste: 50, aliases: ['T. ROTATIVA', 'T . ROTATIVA', 'TROQUELADORA ROTATIVA'] },
-    { id: 'CAIMAN', label: 'Caimán', piezasMin: 5, ajuste: 15, aliases: ['CAIMAN', 'CAIMÁN'] },
+    { id: 'CAIMAN', label: 'Caiman', piezasMin: 5, ajuste: 15, aliases: ['CAIMAN', 'CAIMAN', 'caiman', 'Caimán'] },
     { id: 'PEGADORA', label: 'Pegadora', piezasMin: 80, ajuste: 30, aliases: ['PEGADORA', 'Pegadora'] },
     { id: 'T_PLANA', label: 'Troqueladora Plana', piezasMin: 35, ajuste: 50, aliases: ['T. PLANA', 'TROQ. PLANA', 'TROQUELADORA PLANA'] },
-    { id: 'ARMADORA_REJILLAS', label: 'Máquina Armadora (Armadora de Rejillas)', piezasMin: 26, ajuste: 30, aliases: ['ARMADORA DE REJILLAS', 'MAQUINA ARMADORA', 'MÁQUINA ARMADORA'] },
+    { id: 'ARMADORA_REJILLAS', label: 'Maquina Armadora (Armadora de Rejillas)', piezasMin: 26, ajuste: 30, aliases: ['ARMADORA DE REJILLAS', 'MAQUINA ARMADORA', 'MAQUINA ARMADORA'] },
 ];
 
 const OPERACIONES = ['DESPIQUE', 'ARMADO', 'CORTE', 'GRAPADO', 'PEGADO', 'ENSAMBLE', 'DOBLADO', 'CONTEO', 'SELLADO', 'AMARRADO', 'TARIMA'];
@@ -26,7 +26,7 @@ const MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', '
 const SHEETS_CLIENT_CACHE = {};
 const CACHE_TTL_MS = 2 * 60 * 1000; // 2 minutos
 
-/* ======================= HELPERS DE CONFIGURACIÓN ======================= */
+/* ======================= HELPERS DE CONFIGURACION ======================= */
 
 function machineById(id) {
     return MACHINES.find(m => m.id === id);
@@ -41,11 +41,10 @@ function normalizeMachine(raw) {
     return null;
 }
 
-function defaultTiempoDisponible(machineId, dateStr) { // sirve para crear la constante de tiempo "defaul: 570min"
+function defaultTiempoDisponible(machineId, dateStr) {
     const m = machineById(machineId);
     const d = new Date(dateStr + 'T00:00:00');
     const dow = d.getDay();
-    //if (m && m.flexo) return null;
     if (dow === 0 || dow === 6) return 0;
     if (dow === 2) return 600;
     return 570;
@@ -59,8 +58,6 @@ function toISODate(d) {
     return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 }
 
-// Formatea una fecha interna (YYYY-MM-DD) al formato definitivo de
-// visualización DD/MM/YYYY (el que usamos en Excel/Sheets/México).
 function formatDateDisplay(isoDate) {
     if (!isoDate || typeof isoDate !== 'string') return '';
     const [y, m, d] = isoDate.split('-');
@@ -68,12 +65,6 @@ function formatDateDisplay(isoDate) {
     return `${d}/${m}/${y}`;
 }
 
-// Parser único de fechas: acepta objetos Date, números de serie de Excel,
-// texto ISO (YYYY-MM-DD) y texto DD/MM/YYYY o DD/MM/YY.
-// REGLA DEFINITIVA: cualquier fecha con "/" ambigua (como "05/06/2026")
-// se interpreta SIEMPRE como DD/MM/YYYY, nunca como MM/DD/YYYY.
-// Internamente todo se sigue guardando como YYYY-MM-DD (necesario para
-// poder ordenar y comparar fechas como texto sin errores).
 function parseFlexibleDate(v) {
     if (!v && v !== 0) return '';
     if (v instanceof Date) return isNaN(v) ? '' : toISODate(v);
@@ -86,10 +77,8 @@ function parseFlexibleDate(v) {
     const s = String(v).trim();
     if (!s) return '';
 
-    // Ya viene en formato interno ISO
     if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
 
-    // DD/MM/YYYY o DD/MM/YY — el estándar definitivo para fechas con "/"
     const m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
     if (m) {
         let [, d, mo, y] = m;
@@ -97,12 +86,15 @@ function parseFlexibleDate(v) {
         return `${y}-${pad2(mo)}-${pad2(d)}`;
     }
 
-    // Último recurso (formatos no previstos)
+    const m2 = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+    if (m2) {
+        return { anio: parseInt(m2[1], 10), mes: parseInt(m2[2], 10), dia: parseInt(m2[3], 10) };
+    }
+
     const d2 = new Date(s);
     return isNaN(d2) ? '' : toISODate(d2);
 }
 
-// Se mantiene el nombre anterior por compatibilidad con el resto del código
 function parseExcelDate(v) {
     return parseFlexibleDate(v);
 }
@@ -112,15 +104,7 @@ function uid() {
 }
 
 /* ======================= STORAGE HELPERS ======================= */
-/*
- * Detecta automáticamente dónde está corriendo el panel:
- * - Dentro de una conversación de Claude (vista previa de artefacto):
- *   usa window.storage, que Claude provee.
- * - Abierto como archivo local (file://) o subido a un servidor propio:
- *   window.storage NO existe ahí, así que usa localStorage del navegador
- *   (nativo, no depende de Claude, funciona igual en cualquier lado).
- * Un mismo prefijo evita chocar con otras cosas guardadas en el navegador.
- */
+
 const LS_PREFIX = 'panel_produccion_';
 const usaClaudeStorage = typeof window.storage !== 'undefined' && window.storage !== null;
 
@@ -292,8 +276,7 @@ function updateSubProc() {
 window.updateSubProc = updateSubProc;
 
 /* ================================================================
-   OPERADORES DINÁMICOS (Enter o botón "+" agrega otro nombre;
-   el RRHH se calcula solo contando cuántos nombres hay capturados)
+   OPERADORES DINAMICOS
    ================================================================ */
 
 function makeOperadorRow(containerId, rrhhId, primero) {
@@ -412,13 +395,15 @@ function setDateInputs() {
 
 function setMonthSelects() {
     const month = getCurrentMonth();
-    ['r-mes', 'rk-mes', 'rm-mes', 'rt-mes', 'rc-mes', 'rtop-mes', 'rnp-mes', 'rp-mes'].forEach(id => {
+    ['r-mes', 'rk-mes', 'rm-mes', 'rt-mes', 'rc-mes', 'rnp-mes', 'rp-mes'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.value = month;
     });
 }
 
-/* ======================= HERENCIA DE HORARIOS ======================= */
+/* ================================================================
+   HERENCIA DE HORARIOS
+   ================================================================ */
 
 const LAST_END_KEY = LS_PREFIX + 'ultima-hora-fin-';
 
@@ -442,21 +427,19 @@ function minutosDesdeMedianoche(hora) {
     return h * 60 + m;
 }
 
-// Precarga la hora de inicio heredada y, si es necesario, resetea el fin a 17:00
 function aplicarHoraHerencia(inputInicioId, inputFinId, contexto, fechaActual) {
     const ultima = obtenerUltimaHoraFin(contexto, fechaActual);
     if (!ultima) return;
     const elInicio = document.getElementById(inputInicioId);
     const elFin   = document.getElementById(inputFinId);
     if (!elInicio) return;
-    
+
     elInicio.value = ultima;
-    
-    // Si el fin queda antes o igual al inicio, lo reseteamos a 17:00 para evitar 0 min
+
     if (elFin && minutosDesdeMedianoche(elFin.value) <= minutosDesdeMedianoche(ultima)) {
         elFin.value = '17:00';
     }
-    
+
     if (inputInicioId === 'f-hora-inicio') calcularTiempoMaquina();
     if (inputInicioId === 'm-hora-inicio') calcularTiempoManual();
 }
@@ -482,7 +465,7 @@ function renderMaquinasTable() {
     const rows = filterByMonthYear(DB.maquinas, hoy.getMonth() + 1, hoy.getFullYear())
         .sort((a, b) => b.fecha.localeCompare(a.fecha));
     t.querySelector('thead').innerHTML =
-        `<tr><th>Fecha</th><th>Máquina</th><th>Producto</th><th>NP</th><th>H.V.</th><th>Operador</th><th>RRHH</th><th>Cant. Prod.</th><th>Tiempo</th><th>T. Disp.</th><th>Comentarios</th><th></th></tr>`;
+        `<tr><th>Fecha</th><th>Maquina</th><th>Producto</th><th>NP</th><th>H.V.</th><th>Operador</th><th>RRHH</th><th>Cant. Prod.</th><th>Tiempo</th><th>T. Disp.</th><th>Comentarios</th><th></th></tr>`;
     t.querySelector('tbody').innerHTML = rows.length ?
         rows.map(e => `
             <tr>
@@ -536,7 +519,7 @@ function renderParoTable() {
     const rows = filterByMonthYear(DB.paro, hoy.getMonth() + 1, hoy.getFullYear())
         .sort((a, b) => b.fecha.localeCompare(a.fecha));
     t.querySelector('thead').innerHTML =
-        `<tr><th>Fecha</th><th>Máquina</th><th>Minutos</th><th>Motivo</th><th></th></tr>`;
+        `<tr><th>Fecha</th><th>Maquina</th><th>Minutos</th><th>Motivo</th><th></th></tr>`;
     t.querySelector('tbody').innerHTML = rows.length ?
         rows.map(e => `
             <tr>
@@ -594,24 +577,21 @@ function renderContenedoresTable() {
    CAPTURA DE DATOS
    ================================================================ */
 
-// ===== MÁQUINAS =====
+// ===== MAQUINAS =====
 
 async function addMaquinaEntry() {
     const fecha = val('f-fecha');
     const maquina = val('f-maquina');
     if (!fecha || !maquina) {
-        setStatus('status-maquinas', 'Fecha y máquina son obligatorias.', true);
+        setStatus('status-maquinas', 'Fecha y maquina son obligatorias.', true);
         return;
     }
-    // Verificar si ya existe un tiempo disponible para esta máquina+fecha
     const existente = DB.maquinas.find(e => e.maquina === maquina && e.fecha === fecha && e.tiempoDisp > 0);
     let tiempoDisp = numval('f-tiempo-disp');
 
     if (existente) {
-        // Ya hay un tiempo disponible registrado para este día: usar el existente
         tiempoDisp = existente.tiempoDisp;
     } else if (tiempoDisp > 0) {
-        // Primer registro del día: guardar como override para el resumen
         const overrideKey = maquina + '_' + fecha;
         DB.tiempoOverrides[overrideKey] = tiempoDisp;
         await saveObj('config-tiempo-overrides', DB.tiempoOverrides);
@@ -635,9 +615,13 @@ async function addMaquinaEntry() {
     await saveArr('entries-maquinas', DB.maquinas);
 
     pushToSheets('MAQUINAS', mapMaquinaRow(nuevo));
-    // Clear rápido: conserva operador(es) y RRHH para capturas seguidas de la misma máquina
+
     ['f-producto', 'f-np', 'f-cant', 'f-tiempo', 'f-comentarios', 'f-hv']
         .forEach(id => document.getElementById(id).value = '');
+
+    if (!existente && tiempoDisp > 0) {
+        updateTiempoDispField();
+    }
 
     // >>> HERENCIA DE HORARIO <<<
     const finGuardado = val('f-hora-fin');
@@ -645,10 +629,6 @@ async function addMaquinaEntry() {
     aplicarHoraHerencia('f-hora-inicio', 'f-hora-fin', maquina, fecha);
     // -----------------------------
 
-    // Si acabamos de registrar el primer tiempo disponible del día, bloquear el campo
-    if (!existente && tiempoDisp > 0) {
-        updateTiempoDispField();
-    }
     setStatus('status-maquinas', 'Guardado ✓ — siguiente captura desde las ' + finGuardado);
     renderMaquinasTable();
 }
@@ -690,7 +670,6 @@ async function handleImportMaquinas(file) {
             tiempoDisp: tiempoDispImport,
             comentarios: row['COMENTARIOS'] || ''
         });
-        // Si el Excel trae tiempo disponible, guardar como override
         if (tiempoDispImport > 0) {
             const overrideKey = maquinaId + '_' + fecha;
             DB.tiempoOverrides[overrideKey] = tiempoDispImport;
@@ -729,7 +708,6 @@ async function addManualEntry() {
         setStatus('status-manuales', 'La fecha es obligatoria.', true);
         return;
     }
-    // Asegurar que el tiempo esté calculado antes de guardar
     calcularTiempoManual();
     const ops = {};
     OPERACIONES.forEach(op => {
@@ -758,13 +736,13 @@ async function addManualEntry() {
         .forEach(id => document.getElementById(id).value = '');
     document.querySelectorAll('.m-op').forEach(cb => cb.checked = false);
     document.getElementById('m-subproc').value = '';
-    
+
     // >>> HERENCIA DE HORARIO <<<
     const finGuardado = val('m-hora-fin');
     guardarUltimaHoraFin('manual', finGuardado, fecha);
     aplicarHoraHerencia('m-hora-inicio', 'm-hora-fin', 'manual', fecha);
     // -----------------------------
-    
+
     setStatus('status-manuales', 'Guardado ✓ — siguiente captura desde las ' + finGuardado);
     renderManualesTable();
 }
@@ -836,7 +814,7 @@ async function addParoEntry() {
     const fecha = val('p-fecha');
     const maquina = val('p-maquina');
     if (!fecha || !maquina) {
-        setStatus('status-paro', 'Fecha y máquina son obligatorias.', true);
+        setStatus('status-paro', 'Fecha y maquina son obligatorias.', true);
         return;
     }
     const nuevo = {
@@ -859,117 +837,6 @@ async function deleteParoEntry(id) {
     await saveArr('entries-paro', DB.paro);
     renderParoTable();
 }
-
-let lastFrecuenciaParosRows = [];
-
-async function renderFrecuenciaParos(forceRefresh = false) {
-    const mes = parseInt(val('rp-mes'), 10);
-    const anio = parseInt(val('rp-anio'), 10);
-
-    //---------------------------
-    const contSpinner = document.getElementById('chart-paros-container');
-    if (contSpinner) contSpinner.innerHTML = '<div class="empty"><div class="spinner-inline"></div> Consultando datos…</div>';
-    //----------------------------
-
-    const resultado = await obtenerDatosResumen(mes, anio, forceRefresh);
-//-------------------
-    const contResultado = document.getElementById('chart-paros-container');
-if (contResultado) contResultado.innerHTML = '...pareto...';
-//-------------------
-
-    const datosSheets = resultado.datos;
-    mostrarFuenteDatos('res-paros', resultado.fuente, resultado.cacheado);
-
-    const rows = (datosSheets.PARO || [])
-        .map(convertirFilaParo)
-        .filter(Boolean);
-
-    // Agrupar por motivo
-    const porMotivo = {};
-    rows.forEach(e => {
-        const motivo = (e.motivo || 'SIN MOTIVO').trim().toUpperCase();
-        if (!porMotivo[motivo]) porMotivo[motivo] = { veces: 0, minutos: 0 };
-        porMotivo[motivo].veces += 1;
-        porMotivo[motivo].minutos += Number(e.minutos) || 0;
-    });
-
-    // Convertir a array y ordenar por minutos (descendente)
-    let entries = Object.entries(porMotivo).map(([motivo, data]) => ({
-        motivo, veces: data.veces, minutos: data.minutos
-    })).sort((a, b) => b.minutos - a.minutos);
-
-    const totalMinutos = entries.reduce((s, e) => s + e.minutos, 0);
-    if (!totalMinutos) {
-        document.getElementById('chart-paros-container').innerHTML = 
-            '<div class="empty">Sin registros de paro este mes</div>';
-        return;
-    }
-
-    // Calcular % acumulado
-    let acum = 0;
-    entries = entries.map(e => {
-        acum += e.minutos;
-        return { ...e, pct: Math.round((e.minutos / totalMinutos) * 100), pctAcum: Math.round((acum / totalMinutos) * 100) };
-    });
-
-    // Guardar para exportar
-    lastFrecuenciaParosRows = entries.map(e => ({
-        MOTIVO: e.motivo,
-        VECES: e.veces,
-        MINUTOS: e.minutos,
-        '% DEL TOTAL': e.pct,
-        '% ACUMULADO': e.pctAcum
-    }));
-
-    const max = entries[0].minutos;
-    const limite80 = entries.findIndex(e => e.pctAcum > 80); // Último índice que forma el 80%
-
-    // Renderizar
-    const cont = document.getElementById('chart-paros-container');
-    cont.innerHTML = `
-        <div style="display:grid; grid-template-columns: 180px 1fr 70px 60px 60px; gap:8px; align-items:center; font-size:12px; font-weight:bold; color:var(--sub); margin-bottom:6px; padding:0 4px;">
-            <div>Motivo</div>
-            <div style="text-align:center;">Minutos totales (% acumulado)</div>
-            <div style="text-align:center;">Veces</div>
-            <div style="text-align:center;">% Ind.</div>
-            <div style="text-align:center;">% Acum.</div>
-        </div>
-        ${entries.map((e, i) => {
-            const barPct = max ? Math.round((e.minutos / max) * 100) : 0;
-            const esPareto = i <= limite80; // Los que forman el 80%
-            return `
-            <div style="display:grid; grid-template-columns: 180px 1fr 70px 60px 60px; gap:8px; align-items:center; margin-bottom:10px; padding:8px; border-radius:8px; ${esPareto ? 'background:#fef3c7; border:1px solid #fcd34d;' : ''}">
-                <div style="font-size:12.5px; font-weight:bold; word-break:break-word;" title="${e.motivo}">${e.motivo}</div>
-                <div>
-                    <div style="display:flex; align-items:center; gap:8px;">
-                        <div class="top5-bar-bg" style="flex:1; height:24px;">
-                            <div class="top5-bar-fill" style="width:${barPct}%; ${esPareto ? 'background:linear-gradient(90deg, #d97706, #f59e0b);' : 'background:linear-gradient(90deg, var(--accent), #60a5fa);'}"></div>
-                        </div>
-                        <span style="font-size:11px; color:var(--sub); white-space:nowrap;">${e.minutos} min</span>
-                    </div>
-                    ${esPareto && i === limite80 ? '<div style="font-size:10px; color:#92400e; margin-top:2px;">▲ Aquí se concentra el 80% del tiempo perdido</div>' : ''}
-                </div>
-                <div style="text-align:center; font-size:12px;">${e.veces}</div>
-                <div style="text-align:center; font-size:12px; font-weight:bold;">${e.pct}%</div>
-                <div style="text-align:center; font-size:12px; font-weight:bold; ${e.pctAcum >= 80 ? 'color:var(--bad);' : ''}">${e.pctAcum}%</div>
-            </div>
-            `;
-        }).join('')}
-        <div style="margin-top:12px; padding:10px; background:#f8f9fb; border-radius:8px; font-size:12px; color:var(--sub);">
-            <strong>Total minutos de paro:</strong> ${totalMinutos} min &nbsp;|&nbsp; 
-            <strong>Motivos distintos:</strong> ${entries.length} &nbsp;|&nbsp; 
-            <strong>Regla 80/20:</strong> Los primeros ${limite80 + 1} motivos causan el 80% del tiempo perdido.
-        </div>
-    `;
-
-}
-
-function exportFrecuenciaParos() {
-    if (!lastFrecuenciaParosRows.length) { alert('Genera el Pareto primero.'); return; }
-    downloadExcel(lastFrecuenciaParosRows, `pareto_paros_${val('rp-mes')}_${val('rp-anio')}.xlsx`, 'PAROS_PARETO');
-}
-
-
 
 // ===== TARIMAS =====
 
@@ -1030,7 +897,7 @@ async function deleteContenedorEntry(id) {
 }
 
 /* ================================================================
-   RESÚMENES
+   RESUMENES
    ================================================================ */
 
 let lastResumenMaquinaRows = [];
@@ -1038,15 +905,16 @@ let lastResumenKitRows = [];
 let lastResumenManualesRows = [];
 let lastResumenTarimasRows = [];
 let lastResumenContenedoresRows = [];
+let lastFrecuenciaParosRows = [];
 
-// ===== RESUMEN: MÁQUINAS =====
+// ===== RESUMEN: MAQUINAS =====
 
 async function renderResumenMaquina(forceRefresh = false) {
     const maquina = val('r-maquina');
     const mes = parseInt(val('r-mes'), 10);
     const anio = parseInt(val('r-anio'), 10);
     if (!maquina) return;
-    
+
     const maquinaLabel = machineById(maquina)?.label || maquina;
     const mesNombre = MESES[mes - 1];
     const tituloEl = document.getElementById('titulo-resumen-maquina');
@@ -1057,11 +925,11 @@ async function renderResumenMaquina(forceRefresh = false) {
 
     const tbody = document.querySelector('#tbl-resumen-maquina tbody');
     if (tbody) {
-        tbody.innerHTML = `<tr><td colspan="10" class="empty"><div class="spinner-inline"></div> Consultando datos…</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="10" class="empty"><div class="spinner-inline"></div> Consultando datos...</td></tr>`;
     }
     const kpiEl = document.getElementById('kpi-maquina');
     if (kpiEl) {
-        kpiEl.innerHTML = `<div class="kpi" style="grid-column:1/-1;text-align:center;color:var(--sub);"><div class="num">⏳</div><div class="lbl">Consultando Google Sheets…</div></div>`;
+        kpiEl.innerHTML = `<div class="kpi" style="grid-column:1/-1;text-align:center;color:var(--sub);"><div class="num">...</div><div class="lbl">Consultando Google Sheets...</div></div>`;
     }
 
     const resultado = await obtenerDatosResumen(mes, anio, forceRefresh);
@@ -1093,7 +961,6 @@ async function renderResumenMaquina(forceRefresh = false) {
         const overrideKey = maquina + '_' + fecha;
         let tiempoDisp = DB.tiempoOverrides[overrideKey];
 
-        // Si no hay override manual, buscar si algún registro de producción capturó tiempo disponible
         if (tiempoDisp === undefined) {
             const regConTiempoDisp = entriesDia.find(e => e.tiempoDisp > 0);
             if (regConTiempoDisp) {
@@ -1101,7 +968,6 @@ async function renderResumenMaquina(forceRefresh = false) {
             }
         }
 
-        // Si aún no hay nada, usar el default por día de la semana
         if (tiempoDisp === undefined) {
             const def = defaultTiempoDisponible(maquina, fecha);
             tiempoDisp = def === null ? '' : def;
@@ -1159,19 +1025,18 @@ async function renderResumenMaquina(forceRefresh = false) {
 
     const t = document.getElementById('tbl-resumen-maquina');
     t.querySelector('thead').innerHTML =
-        `<tr><th>Día</th><th>Fecha</th><th>Tiempo Disp. (min)</th><th>Producción</th><th>Partidas</th><th>Real (u/min)</th><th>Esperado (u/min)</th><th>%</th><th>Paro (min)</th><th>Motivo(s)</th></tr>`;
+        `<tr><th>Dia</th><th>Fecha</th><th>Tiempo Disp. (min)</th><th>Produccion</th><th>Partidas</th><th>Real (u/min)</th><th>Esperado (u/min)</th><th>%</th><th>Paro (min)</th><th>Motivo(s)</th></tr>`;
     t.querySelector('tbody').innerHTML = rowsHtml.join('');
 
     const pctProm = nPct ? (sumPct / nPct * 100).toFixed(0) : '-';
     document.getElementById('kpi-maquina').innerHTML = `
-        <div class="kpi"><div class="num">${totalProd.toLocaleString()}</div><div class="lbl">Producción total del mes</div></div>
+        <div class="kpi"><div class="num">${totalProd.toLocaleString()}</div><div class="lbl">Produccion total del mes</div></div>
         <div class="kpi"><div class="num">${pctProm}${nPct ? '%' : ''}</div><div class="lbl">Cumplimiento promedio</div></div>
         <div class="kpi"><div class="num">${totalParo}</div><div class="lbl">Minutos de paro en el mes</div></div>
     `;
 
     renderTop5Maquina(maquina, datosMaquinasDelMes);
 }
-
 
 async function updateTiempoOverride(maquina, fecha, value) {
     const key = maquina + '_' + fecha;
@@ -1183,7 +1048,6 @@ async function updateTiempoOverride(maquina, fecha, value) {
     }
     await saveObj('config-tiempo-overrides', DB.tiempoOverrides);
 
-    // Sincronizar con Google Sheets
     const rowOverride = {
         FECHA: formatDateDisplay(fecha),
         MAQUINA: machineById(maquina)?.label || maquina,
@@ -1207,15 +1071,15 @@ function exportResumenMaquina() {
 async function renderResumenKit(forceRefresh = false) {
     const mes = parseInt(val('rk-mes'), 10);
     const anio = parseInt(val('rk-anio'), 10);
-    
-    const tbody = document.querySelector('#tbl-resumen-kit tbody');
-    if (tbody) tbody.innerHTML = `<tr><td colspan="4" class="empty"><div class="spinner-inline"></div> Consultando datos…</td></tr>`;
+
+    const t = document.getElementById('tbl-resumen-kit');
+    t.querySelector('thead').innerHTML = '';
+    t.querySelector('tbody').innerHTML = `<tr><td colspan="4" class="empty"><div class="spinner-inline"></div> Consultando datos...</td></tr>`;
 
     const resultado = await obtenerDatosResumen(mes, anio, forceRefresh);
     const datosSheets = resultado.datos;
     mostrarFuenteDatos('res-kit', resultado.fuente, resultado.cacheado);
 
-    // SOLO datos de Sheets
     const rows = (datosSheets.MANUALES || [])
         .map(convertirFilaManual)
         .filter(e => e && (e.producto || '').trim().toUpperCase() === 'KIT')
@@ -1229,7 +1093,6 @@ async function renderResumenKit(forceRefresh = false) {
         CANTIDAD: e.cant
     }));
 
-    const t = document.getElementById('tbl-resumen-kit');
     t.querySelector('thead').innerHTML =
         `<tr><th>Fecha</th><th>Personal</th><th>NP KIT</th><th>Cantidad</th></tr>`;
     t.querySelector('tbody').innerHTML = (rows.length ?
@@ -1257,14 +1120,14 @@ async function renderResumenManuales(forceRefresh = false) {
     const anio = parseInt(val('rm-anio'), 10);
     const filtroProd = val('rm-producto').toUpperCase();
 
-    const tbody = document.querySelector('#tbl-resumen-manuales tbody');//cambio tbl-resumen
-    if (tbody) tbody.innerHTML = `<tr><td colspan="4" class="empty"><div class="spinner-inline"></div> Consultando datos…</td></tr>`;
-    
+    const t = document.getElementById('tbl-resumen-manuales');
+    t.querySelector('thead').innerHTML = '';
+    t.querySelector('tbody').innerHTML = `<tr><td colspan="9" class="empty"><div class="spinner-inline"></div> Consultando datos...</td></tr>`;
+
     const resultado = await obtenerDatosResumen(mes, anio, forceRefresh);
     const datosSheets = resultado.datos;
     mostrarFuenteDatos('res-manuales', resultado.fuente, resultado.cacheado);
 
-    // SOLO datos de Sheets
     const rows = (datosSheets.MANUALES || [])
         .map(convertirFilaManual)
         .filter(e => {
@@ -1287,7 +1150,6 @@ async function renderResumenManuales(forceRefresh = false) {
     }));
 
     const totalCant = sum(rows, 'cant');
-    const t = document.getElementById('tbl-resumen-manuales');
     t.querySelector('thead').innerHTML =
         `<tr><th>Fecha</th><th>Producto</th><th>NP</th><th>H.V.</th><th>Operador</th><th>RRHH</th><th>Cant. Prod.</th><th>Operaciones</th><th>Sub Proc</th></tr>`;
     t.querySelector('tbody').innerHTML = (rows.length ?
@@ -1315,15 +1177,16 @@ function exportResumenManuales() {
         'MANUALES');
 }
 
-// ===== RESUMEN: TARIMAS =====
+// ===== RESUMEN: TARIMAS (desglose diario) =====
 
 async function renderResumenTarimas(forceRefresh = false) {
     const mes = parseInt(val('rt-mes'), 10);
-    const anio = parseInt(val('rt-anio'), 10);  
-    
-    const tbody = document.querySelector('#tbl-resumen-tarimas tbody');//cambio tbl-resumen
-    if (tbody) tbody.innerHTML = `<tr><td colspan="4" class="empty"><div class="spinner-inline"></div> Consultando datos…</td></tr>`;
-    
+    const anio = parseInt(val('rt-anio'), 10);
+
+    const t = document.getElementById('tbl-resumen-tarimas');
+    t.querySelector('thead').innerHTML = '';
+    t.querySelector('tbody').innerHTML = `<tr><td colspan="5" class="empty"><div class="spinner-inline"></div> Consultando datos...</td></tr>`;
+
     const resultado = await obtenerDatosResumen(mes, anio, forceRefresh);
     const datosSheets = resultado.datos;
     mostrarFuenteDatos('res-tarimas', resultado.fuente, resultado.cacheado);
@@ -1365,14 +1228,11 @@ async function renderResumenTarimas(forceRefresh = false) {
         });
     }
 
-    const t = document.getElementById('tbl-resumen-tarimas');
     t.querySelector('thead').innerHTML =
-        `<tr><th>Día</th><th>Fecha</th><th>Persona(s)</th><th>Tipo(s)</th><th>Cantidad</th></tr>`;
+        `<tr><th>Dia</th><th>Fecha</th><th>Persona(s)</th><th>Tipo(s)</th><th>Cantidad</th></tr>`;
     t.querySelector('tbody').innerHTML = rowsHtml.join('') +
         `<tr class="totals"><td colspan="4">Total del mes</td><td>${totalMes}</td></tr>`;
 }
-
-
 
 function exportResumenTarimas() {
     if (!lastResumenTarimasRows.length) { alert('Genera el resumen primero.'); return; }
@@ -1381,22 +1241,20 @@ function exportResumenTarimas() {
         'TARIMAS');
 }
 
-
-
 // ===== RESUMEN: CONTENEDORES =====
 
 async function renderResumenContenedores(forceRefresh = false) {
     const mes = parseInt(val('rc-mes'), 10);
     const anio = parseInt(val('rc-anio'), 10);
 
-    //const tbody = document.querySelector('#tbl-resumen-contenedores');//cambio tbl-resumen
-    //if (tbody) tbody.innerHTML = `<tr><td colspan="4" class="empty"><div class="spinner-inline"></div> Consultando datos…</td></tr>`;
+    const t = document.getElementById('tbl-resumen-contenedores');
+    t.querySelector('thead').innerHTML = '';
+    t.querySelector('tbody').innerHTML = `<tr><td colspan="4" class="empty"><div class="spinner-inline"></div> Consultando datos...</td></tr>`;
 
     const resultado = await obtenerDatosResumen(mes, anio, forceRefresh);
     const datosSheets = resultado.datos;
     mostrarFuenteDatos('res-contenedores', resultado.fuente, resultado.cacheado);
 
-    // SOLO datos de Sheets
     const rows = (datosSheets.CONTENEDORES || [])
         .map(convertirFilaContenedor)
         .filter(Boolean);
@@ -1417,9 +1275,8 @@ async function renderResumenContenedores(forceRefresh = false) {
         'CONTENEDORES/PERSONA-DIA': v.personas ? Number((v.cant / v.personas).toFixed(2)) : 0
     }));
 
-    const t = document.getElementById('tbl-resumen-contenedores');
     t.querySelector('thead').innerHTML =
-        `<tr><th>Turno</th><th>Personas (suma)</th><th>Contenedores (total)</th><th>Contenedores / persona-día</th></tr>`;
+        `<tr><th>Turno</th><th>Personas (suma)</th><th>Contenedores (total)</th><th>Contenedores / persona-dia</th></tr>`;
     t.querySelector('tbody').innerHTML = entries.length ?
         entries.map(([k, v]) => `
             <tr>
@@ -1441,7 +1298,6 @@ function exportResumenContenedores() {
 
 // ===== RESUMEN: TOP 5 PRODUCTOS (reutilizable) =====
 
-// Dibuja barras horizontales a partir de pares [etiqueta, valor] ya calculados
 function drawBars(containerId, pares, opts) {
     const cont = document.getElementById(containerId);
     if (!cont) return;
@@ -1469,7 +1325,6 @@ function drawBars(containerId, pares, opts) {
     }).join('');
 }
 
-// Mantiene el nombre anterior por compatibilidad: agrupa por producto sumando cantidad
 function drawTop5Bars(containerId, rows) {
     const porProducto = {};
     rows.forEach(e => {
@@ -1479,47 +1334,21 @@ function drawTop5Bars(containerId, rows) {
     drawBars(containerId, Object.entries(porProducto), { limite: 5 });
 }
 
-async function renderTop5(forceRefresh = false) {
-    const mes = parseInt(val('rtop-mes'), 10);
-    const anio = parseInt(val('rtop-anio'), 10);
-    const fuente = val('rtop-fuente') || 'ambos';
-
-    const resultado = await obtenerDatosResumen(mes, anio, forceRefresh);
-    const datosSheets = resultado.datos;
-    mostrarFuenteDatos('res-top5', resultado.fuente, resultado.cacheado);
-    if (!datosSheets) {
-        document.getElementById('chart-top5').innerHTML = '<div class="empty">No se pudo conectar con Google Sheets ni hay datos locales.</div>';
-        return;
-    }
-
-    let registros = [];
-    if (fuente === 'ambos' || fuente === 'maquinas') {
-        registros = registros.concat((datosSheets.MAQUINAS || [])
-            .map(convertirFilaMaquina).filter(Boolean));
-    }
-    if (fuente === 'ambos' || fuente === 'manuales') {
-        registros = registros.concat((datosSheets.MANUALES || [])
-            .map(convertirFilaManual).filter(Boolean));
-    }
-
-    drawTop5Bars('chart-top5', registros);
-}
-
-// Top 5 de la máquina seleccionada en "Resumen por Máquina" — recibe los
-// datos del mes que renderResumenMaquina ya trajo y mezcló (no vuelve a
-// consultar Sheets por separado)
 function renderTop5Maquina(maquina, datosMaquinasDelMes) {
     const delMaquina = datosMaquinasDelMes.filter(e => e.maquina === maquina);
     drawTop5Bars('chart-top5-maquina', delMaquina);
 }
 
-// ===== RESUMEN: FRECUENCIA DE NÚMEROS DE PARTE =====
+// ===== RESUMEN: FRECUENCIA DE NUMEROS DE PARTE =====
 
 async function renderFrecuenciaNP(forceRefresh = false) {
     const mes = parseInt(val('rnp-mes'), 10);
     const anio = parseInt(val('rnp-anio'), 10);
     const maquina = val('rnp-maquina');
     const fuente = val('rnp-fuente') || 'ambos';
+
+    const cont = document.getElementById('chart-frecnp');
+    if (cont) cont.innerHTML = '<div class="empty"><div class="spinner-inline"></div> Consultando datos...</div>';
 
     const resultado = await obtenerDatosResumen(mes, anio, forceRefresh);
     const datosSheets = resultado.datos;
@@ -1552,10 +1381,110 @@ async function renderFrecuenciaNP(forceRefresh = false) {
     drawBars('chart-frecnp', Object.entries(porNP), { limite: 8, sufijo: ' veces' });
 }
 
+// ===== RESUMEN: PAROS (PARETO) =====
 
-// ================================================================
-// LISTENER PARA CAMBIO DE MÁQUINA 
-// ================================================================
+async function renderFrecuenciaParos(forceRefresh = false) {
+    const mes = parseInt(val('rp-mes'), 10);
+    const anio = parseInt(val('rp-anio'), 10);
+    const maquinaFiltro = val('rp-maquina');
+
+    const cont = document.getElementById('chart-paros-container');
+    if (cont) {
+        cont.innerHTML = '<div class="empty"><div class="spinner-inline"></div> Consultando datos...</div>';
+    }
+
+    const resultado = await obtenerDatosResumen(mes, anio, forceRefresh);
+    const datosSheets = resultado.datos;
+    mostrarFuenteDatos('res-paros', resultado.fuente, resultado.cacheado);
+
+    let rows = (datosSheets.PARO || [])
+        .map(convertirFilaParo)
+        .filter(Boolean);
+
+    if (maquinaFiltro) {
+        rows = rows.filter(e => e.maquina === maquinaFiltro);
+    }
+
+    const porMotivo = {};
+    rows.forEach(e => {
+        const motivo = (e.motivo || 'SIN MOTIVO').trim().toUpperCase();
+        if (!porMotivo[motivo]) porMotivo[motivo] = { veces: 0, minutos: 0 };
+        porMotivo[motivo].veces += 1;
+        porMotivo[motivo].minutos += Number(e.minutos) || 0;
+    });
+
+    let entries = Object.entries(porMotivo).map(([motivo, data]) => ({
+        motivo, veces: data.veces, minutos: data.minutos
+    })).sort((a, b) => b.minutos - a.minutos);
+
+    const totalMinutos = entries.reduce((s, e) => s + e.minutos, 0);
+    if (!totalMinutos) {
+        if (cont) cont.innerHTML = '<div class="empty">Sin registros de paro este mes</div>';
+        return;
+    }
+
+    let acum = 0;
+    entries = entries.map(e => {
+        acum += e.minutos;
+        return { ...e, pct: Math.round((e.minutos / totalMinutos) * 100), pctAcum: Math.round((acum / totalMinutos) * 100) };
+    });
+
+    lastFrecuenciaParosRows = entries.map(e => ({
+        MOTIVO: e.motivo,
+        VECES: e.veces,
+        MINUTOS: e.minutos,
+        '% DEL TOTAL': e.pct,
+        '% ACUMULADO': e.pctAcum
+    }));
+
+    const max = entries[0].minutos;
+    const limite80 = entries.findIndex(e => e.pctAcum > 80);
+
+    if (cont) {
+        cont.innerHTML = `
+            <div style="display:grid; grid-template-columns: 180px 1fr 70px 60px 60px; gap:8px; align-items:center; font-size:12px; font-weight:bold; color:var(--sub); margin-bottom:6px; padding:0 4px;">
+                <div>Motivo</div>
+                <div style="text-align:center;">Minutos totales (% acumulado)</div>
+                <div style="text-align:center;">Veces</div>
+                <div style="text-align:center;">% Ind.</div>
+                <div style="text-align:center;">% Acum.</div>
+            </div>
+            ${entries.map((e, i) => {
+                const barPct = max ? Math.round((e.minutos / max) * 100) : 0;
+                const esPareto = i <= limite80;
+                return `
+                <div style="display:grid; grid-template-columns: 180px 1fr 70px 60px 60px; gap:8px; align-items:center; margin-bottom:10px; padding:8px; border-radius:8px; ${esPareto ? 'background:#fef3c7; border:1px solid #fcd34d;' : ''}">
+                    <div style="font-size:12.5px; font-weight:bold; word-break:break-word;" title="${e.motivo}">${e.motivo}</div>
+                    <div>
+                        <div style="display:flex; align-items:center; gap:8px;">
+                            <div class="top5-bar-bg" style="flex:1; height:24px;">
+                                <div class="top5-bar-fill" style="width:${barPct}%; ${esPareto ? 'background:linear-gradient(90deg, #d97706, #f59e0b);' : 'background:linear-gradient(90deg, var(--accent), #60a5fa);'}"></div>
+                            </div>
+                            <span style="font-size:11px; color:var(--sub); white-space:nowrap;">${e.minutos} min</span>
+                        </div>
+                        ${esPareto && i === limite80 ? '<div style="font-size:10px; color:#92400e; margin-top:2px;">▲ Aqui se concentra el 80% del tiempo perdido</div>' : ''}
+                    </div>
+                    <div style="text-align:center; font-size:12px;">${e.veces}</div>
+                    <div style="text-align:center; font-size:12px; font-weight:bold;">${e.pct}%</div>
+                    <div style="text-align:center; font-size:12px; font-weight:bold; ${e.pctAcum >= 80 ? 'color:var(--bad);' : ''}">${e.pctAcum}%</div>
+                </div>
+                `;
+            }).join('')}
+            <div style="margin-top:12px; padding:10px; background:#f8f9fb; border-radius:8px; font-size:12px; color:var(--sub);">
+                <strong>Total minutos de paro:</strong> ${totalMinutos} min &nbsp;|&nbsp; 
+                <strong>Motivos distintos:</strong> ${entries.length} &nbsp;|&nbsp; 
+                <strong>Regla 80/20:</strong> Los primeros ${limite80 + 1} motivos causan el 80% del tiempo perdido.
+            </div>
+        `;
+    }
+}
+
+function exportFrecuenciaParos() {
+    if (!lastFrecuenciaParosRows.length) { alert('Genera el Pareto primero.'); return; }
+    downloadExcel(lastFrecuenciaParosRows, `pareto_paros_${val('rp-mes')}_${val('rp-anio')}.xlsx`, 'PAROS_PARETO');
+}
+
+// ===== LISTENER PARA CAMBIO DE MAQUINA =====
 
 function onMaquinaChange() {
     const selector = document.getElementById('f-maquina');
@@ -1563,16 +1492,25 @@ function onMaquinaChange() {
     const maquinaActual = selector.value;
     if (!maquinaActual) return;
 
-    // Clear completo...
     ['f-producto', 'f-np', 'f-cant', 'f-tiempo', 'f-comentarios', 'f-hv']
-        .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
-    
-    // ... (todo lo demás que ya tienes: tiempo disp, operadores, etc.) ...
+        .forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.value = '';
+        });
 
-    // >>> HERENCIA DE HORARIO <<<
+    const tdEl = document.getElementById('f-tiempo-disp');
+    if (tdEl) {
+        tdEl.readOnly = false;
+        tdEl.classList.remove('bloqueado');
+        tdEl.value = '';
+    }
+    const tdMsg = document.getElementById('f-tiempo-disp-msg');
+    if (tdMsg) { tdMsg.style.display = 'none'; tdMsg.innerHTML = ''; }
+    resetOperadorList('f-operadores-list', 'f-rrhh');
+    updateTiempoDispField();
+
     const hoy = getToday();
     aplicarHoraHerencia('f-hora-inicio', 'f-hora-fin', maquinaActual, hoy);
-    // -----------------------------
 
     const maquina = machineById(maquinaActual);
     if (maquina) {
@@ -1588,11 +1526,9 @@ function updateTiempoDispField() {
     const msgEl = document.getElementById('f-tiempo-disp-msg');
     if (!el || !maquina || !fecha) return;
 
-    // Verificar si ya existe un tiempo disponible capturado para esta máquina+fecha
     const existente = DB.maquinas.find(e => e.maquina === maquina && e.fecha === fecha && e.tiempoDisp > 0);
 
     if (existente) {
-        // Ya está bloqueado: mostrar el valor capturado, no editable
         el.value = existente.tiempoDisp;
         el.readOnly = true;
         el.classList.add('bloqueado');
@@ -1600,10 +1536,8 @@ function updateTiempoDispField() {
             msgEl.style.display = 'flex';
             msgEl.className = 'tiempo-disp-msg bloqueado';
             msgEl.innerHTML = `🔒 Tiempo disponible ya registrado para ${machineById(maquina)?.label || maquina} <strong>${existente.tiempoDisp} min</strong>`;
-            //msgEl.innerHTML = `🔒 Tiempo disponible ya registrado para ${machineById(maquina)?.label || maquina} — <strong>${existente.tiempoDisp} min</strong>. Para cambiarlo, borra el primer registro de este día.`;
         }
     } else {
-        // No está bloqueado: precargar default si está vacío
         el.readOnly = false;
         el.classList.remove('bloqueado');
         if (msgEl) {
@@ -1624,8 +1558,6 @@ function onTiempoDispManualChange() {
     const el = document.getElementById('f-tiempo-disp');
     if (!el || el.readOnly || !maquina || !fecha) return;
 
-    // Cuando el usuario edita manualmente el tiempo disponible, guardarlo como override
-    // para que el resumen lo use, pero solo hasta que se guarde el primer registro
     const valNum = Number(el.value);
     if (valNum > 0) {
         const overrideKey = maquina + '_' + fecha;
@@ -1640,7 +1572,7 @@ function minutosEntreHoras(horaInicio, horaFin) {
     const [h1, m1] = horaInicio.split(':').map(Number);
     const [h2, m2] = horaFin.split(':').map(Number);
     let min = (h2 * 60 + m2) - (h1 * 60 + m1);
-    if (min < 0) min += 24 * 60; // Cruza medianoche
+    if (min < 0) min += 24 * 60;
     return min;
 }
 
@@ -1666,16 +1598,8 @@ function calcularTiempoManual() {
 }
 window.calcularTiempoManual = calcularTiempoManual;
 
-
 /* ================================================================
-   INICIALIZACIÓN (BOOT)
-   ================================================================ */
-
-/* ================================================================
-   SINCRONIZACIÓN CON GOOGLE SHEETS (vía Google Apps Script Web App)
-   Es de una sola vía: el panel manda datos, no los lee de vuelta.
-   Se usa fetch en modo 'no-cors' porque Apps Script no responde con
-   encabezados CORS, así que no hay confirmación visible de éxito.
+   SINCRONIZACION CON GOOGLE SHEETS
    ================================================================ */
 
 function mapMaquinaRow(e) {
@@ -1718,8 +1642,8 @@ function pushToSheets(sheetName, row) {
     if (!SHEETS_CONFIG.enabled || !SHEETS_CONFIG.url) return Promise.resolve();
     return fetch(SHEETS_CONFIG.url, {
         method: 'POST',
-        mode: 'no-cors', // Apps Script no manda headers CORS; así evitamos el bloqueo del navegador
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // evita el preflight OPTIONS que Apps Script no soporta
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify({ sheet: sheetName, row })
     }).catch(err => console.error('Error enviando a Google Sheets:', err));
 }
@@ -1729,7 +1653,7 @@ async function guardarConfigSheets() {
     const enabled = document.getElementById('cfg-webhook-enabled').checked;
     SHEETS_CONFIG = { url, enabled };
     await saveObj('config-sheets-sync', SHEETS_CONFIG);
-    setStatus('status-config', 'Configuración guardada ✓');
+    setStatus('status-config', 'Configuracion guardada ✓');
 }
 
 function probarConexionSheets() {
@@ -1741,7 +1665,7 @@ function probarConexionSheets() {
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify({
             sheet: 'PRUEBA',
-            row: { FECHA: formatDateDisplay(toISODate(new Date())), MENSAJE: 'Conexión de prueba desde el Panel de Producción' }
+            row: { FECHA: formatDateDisplay(toISODate(new Date())), MENSAJE: 'Conexion de prueba desde el Panel de Produccion' }
         })
     }).then(() => {
         setStatus('status-config', 'Prueba enviada — revisa la pestaña "PRUEBA" en tu Google Sheet en unos segundos.');
@@ -1754,7 +1678,6 @@ function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 async function reenviarTodoASheets() {
     if (!val('cfg-webhook-url')) { setStatus('status-reenvio', 'Configura y guarda primero la URL.', true); return; }
-    // Fuerza el envío aunque el toggle esté apagado, ya que el usuario lo pidió explícitamente aquí
     const urlActiva = val('cfg-webhook-url');
     const configTemporal = { url: urlActiva, enabled: true };
     const configOriginal = SHEETS_CONFIG;
@@ -1777,18 +1700,18 @@ async function reenviarTodoASheets() {
     ];
 
     if (!tareas.length) {
-        setStatus('status-reenvio', 'No hay registros capturados todavía.', true);
+        setStatus('status-reenvio', 'No hay registros capturados todavia.', true);
         SHEETS_CONFIG = configOriginal;
         return;
     }
 
     setStatus('status-reenvio', `Enviando ${tareas.length} registros, no cierres esta pestaña...`);
     for (let i = 0; i < tareas.length; i++) {
-        await pushToSheets(tareas[i][0], tareas[i][1]); // espera a que termine antes de mandar el siguiente
+        await pushToSheets(tareas[i][0], tareas[i][1]);
         if ((i + 1) % 10 === 0 || i === tareas.length - 1) {
             setStatus('status-reenvio', `Enviando... ${i + 1} de ${tareas.length}`);
         }
-        await sleep(150); // pequeño respiro extra para no saturar el webhook
+        await sleep(150);
     }
     SHEETS_CONFIG = configOriginal;
     setStatus('status-reenvio', `Listo — se reenviaron ${tareas.length} registros.`);
@@ -1800,43 +1723,28 @@ window.reenviarTodoASheets = reenviarTodoASheets;
 
 /* ================================================================
    IMPORTAR (LEER) DESDE GOOGLE SHEETS
-   A diferencia del push (POST en modo no-cors, "a ciegas"), aquí SÍ
-   podemos leer la respuesta: los doGet de Apps Script sí permiten
-   fetch normal desde el navegador.
-   Solo se agregan filas que no existan ya localmente (comparando
-   por los mismos campos que se guardan en el Sheet), para no duplicar.
    ================================================================ */
 
-// Convierte un objeto a una "llave" comparable: texto en mayúsculas
-// sin espacios sobrantes, números normalizados, y fechas normalizadas
-// a su valor real (sin importar si el texto dice "08/06/2026",
-// "2026-06-08" u otra variante) — para poder comparar un registro
-// local contra uno leído de Sheets sin falsos negativos.
 function buildRowKey(row) {
     return Object.keys(row).sort().map(k => {
         const v = row[k];
         if (k === 'FECHA') return parseFlexibleDate(v) || '';
         if (v === null || v === undefined || v === '') return '';
         const n = Number(v);
-        return !isNaN(n) && v !== '' ? String(n) : String(v).trim().toUpperCase();
+        if (v !== '' && !isNaN(n)) return String(n);
+        return String(v).trim().toUpperCase();
     }).join('|');
 }
 
-// Se mantiene el nombre anterior por compatibilidad; usa el mismo parser único
 function parseSheetDate(v) {
     return parseFlexibleDate(v);
 }
-
-// Convierte una fila leída de Sheets (formato de columnas del Sheet) a la
-// forma interna de cada entrada. Devuelven null cuando la fila no se puede
-// usar (ej. nombre de máquina no reconocido) para que quien llama la ignore.
 
 function convertirFilaMaquina(row) {
     const maquinaId = normalizeMachine(row.MAQUINA);
     if (!maquinaId) return null;
     const tiempoDispSheet = Number(row['TIEMPO DISP']) || 0;
     const fecha = parseSheetDate(row.FECHA);
-    // Si el Sheet trae tiempo disponible, guardarlo como override
     if (tiempoDispSheet > 0 && fecha) {
         const overrideKey = maquinaId + '_' + fecha;
         DB.tiempoOverrides[overrideKey] = tiempoDispSheet;
@@ -1883,9 +1791,6 @@ function convertirFilaContenedor(row) {
     };
 }
 
-// Junta un arreglo local con filas de Sheets, agregando solo lo que no
-// exista ya (comparando por buildRowKey). No modifica el arreglo local
-// que le pasaron — regresa uno nuevo, salvo que se pida lo contrario.
 function mergeSinDuplicar(localArr, sheetRows, mapLocalFn, convertFn) {
     if (!Array.isArray(sheetRows) || !sheetRows.length) return localArr;
     const existentes = new Set(localArr.map(e => buildRowKey(mapLocalFn(e))));
@@ -1901,11 +1806,6 @@ function mergeSinDuplicar(localArr, sheetRows, mapLocalFn, convertFn) {
     return localArr.concat(extra);
 }
 
-// Pide datos a Apps Script en formato JSONP en vez de fetch(): Chrome
-// bloquea con CORB la lectura de las respuestas normales de Apps Script
-// sin importar dónde esté hospedado el panel (ni con https:// se libra),
-// pero SÍ permite cargar <script> entre orígenes distintos — por eso el
-// truco funciona. Se resuelve con null si tarda demasiado o falla.
 let jsonpContador = 0;
 function fetchSheetsJSONP(url, timeoutMs = 10000) {
     return new Promise(resolve => {
@@ -1930,7 +1830,7 @@ function fetchSheetsJSONP(url, timeoutMs = 10000) {
             if (terminado) return;
             terminado = true;
             limpiar();
-            console.error('JSONP a Google Sheets: se agotó el tiempo de espera.');
+            console.error('JSONP a Google Sheets: se agoto el tiempo de espera.');
             resolve(null);
         }, timeoutMs);
 
@@ -1948,20 +1848,16 @@ function fetchSheetsJSONP(url, timeoutMs = 10000) {
     });
 }
 
-// Consulta Sheets filtrado a un mes/año específico (el propio Apps Script
-// filtra, así no se descarga el historial completo cada vez). Devuelve
-// null si la sincronización está apagada, no hay URL, o falla la consulta
-// (en ese caso los resúmenes simplemente siguen con los datos locales).
 async function fetchSheetsMonth(mes, anio, forceRefresh = false) {
     if (!SHEETS_CONFIG.enabled || !SHEETS_CONFIG.url) return null;
-    
+
     const cacheKey = `${mes}_${anio}`;
     const now = Date.now();
-    
+
     if (!forceRefresh && SHEETS_CLIENT_CACHE[cacheKey] && (now - SHEETS_CLIENT_CACHE[cacheKey].ts < CACHE_TTL_MS)) {
         return SHEETS_CLIENT_CACHE[cacheKey].data;
     }
-    
+
     let lastError = null;
     for (let attempt = 0; attempt < 2; attempt++) {
         try {
@@ -1976,14 +1872,13 @@ async function fetchSheetsMonth(mes, anio, forceRefresh = false) {
         }
         if (attempt < 1) await sleep(1000);
     }
-    console.error('fetchSheetsMonth falló después de 2 intentos:', lastError);
+    console.error('fetchSheetsMonth fallo despues de 2 intentos:', lastError);
     return null;
 }
 
 async function obtenerDatosResumen(mes, anio, forceRefresh = false) {
     const sheets = await fetchSheetsMonth(mes, anio, forceRefresh);
     if (sheets) {
-        // Aplicar overrides de tiempo desde Sheets sobre los locales
         const overridesSheets = (sheets.TIEMPO_OVERRIDES || []);
         let overridesNuevos = 0;
         overridesSheets.forEach(row => {
@@ -1992,7 +1887,6 @@ async function obtenerDatosResumen(mes, anio, forceRefresh = false) {
             const overrideVal = row.OVERRIDE !== undefined && row.OVERRIDE !== '' ? Number(row.OVERRIDE) : undefined;
             if (maquinaId && fecha && overrideVal !== undefined && !isNaN(overrideVal)) {
                 const key = maquinaId + '_' + fecha;
-                // Solo actualizar si el valor de Sheets es diferente al local
                 if (DB.tiempoOverrides[key] !== overrideVal) {
                     DB.tiempoOverrides[key] = overrideVal;
                     overridesNuevos++;
@@ -2007,12 +1901,12 @@ async function obtenerDatosResumen(mes, anio, forceRefresh = false) {
         const cacheado = !forceRefresh && SHEETS_CLIENT_CACHE[cacheKey] && (Date.now() - SHEETS_CLIENT_CACHE[cacheKey].ts < CACHE_TTL_MS);
         return { fuente: 'sheets', datos: sheets, cacheado };
     }
-    
+
     const filtrar = (arr) => arr.filter(e => {
         const d = parseDate(e.fecha);
         return d.getFullYear() === anio && (d.getMonth() + 1) === mes;
     });
-    
+
     return {
         fuente: 'local',
         datos: {
@@ -2081,7 +1975,7 @@ function mostrarFuenteDatos(panelId, fuente, cacheado) {
     }
     if (fuente === 'sheets') {
         badge.innerHTML = cacheado 
-            ? '✅ Datos de Google Sheets <span class="fuente-sub">(en caché — <a href="#" onclick="window.recargarResumen(\'' + panelId + '\');return false;">↻ recargar</a>)</span>' 
+            ? '✅ Datos de Google Sheets <span class="fuente-sub">(en cache — <a href="#" onclick="window.recargarResumen(\'' + panelId + '\');return false;">↻ recargar</a>)</span>' 
             : '✅ Datos de Google Sheets <span class="fuente-sub">(<a href="#" onclick="window.recargarResumen(\'' + panelId + '\');return false;">↻ recargar</a>)</span>';
         badge.className = 'fuente-badge fuente-sheets';
     } else {
@@ -2097,8 +1991,8 @@ window.recargarResumen = function(panelId) {
         case 'res-manuales': renderResumenManuales(true); break;
         case 'res-tarimas': renderResumenTarimas(true); break;
         case 'res-contenedores': renderResumenContenedores(true); break;
-        case 'res-top5': renderTop5(true); break;
         case 'res-frecnp': renderFrecuenciaNP(true); break;
+        case 'res-paros': renderFrecuenciaParos(true); break;
     }
 };
 
@@ -2106,11 +2000,6 @@ async function importarDesdeSheets() {
     const url = val('cfg-webhook-url');
     if (!url) { setStatus('status-importar-sheets', 'Configura y guarda primero la URL.', true); return; }
 
-    // Regla del panel: el almacenamiento local NUNCA guarda meses que no
-    // sean el actual. Los meses anteriores viven solo en Sheets y se
-    // consultan al vuelo desde cada Resumen (sin guardarse aquí). Por eso
-    // este botón, aunque diga "Importar", solo trae el mes en curso —
-    // pensado como respaldo/recuperación si algo se perdió localmente.
     const hoy = new Date();
     const mesActual = hoy.getMonth() + 1;
     const anioActual = hoy.getFullYear();
@@ -2119,7 +2008,7 @@ async function importarDesdeSheets() {
     const sep = url.includes('?') ? '&' : '?';
     const datos = await fetchSheetsJSONP(`${url}${sep}mes=${mesActual}&anio=${anioActual}`);
     if (!datos) {
-        setStatus('status-importar-sheets', 'No se pudo leer el Sheet. Revisa que el Apps Script esté implementado (Nueva versión) con el código más reciente.', true);
+        setStatus('status-importar-sheets', 'No se pudo leer el Sheet. Revisa que el Apps Script este implementado (Nueva version) con el codigo mas reciente.', true);
         return;
     }
 
@@ -2131,7 +2020,6 @@ async function importarDesdeSheets() {
         ['contenedores', 'entries-contenedores', 'CONTENEDORES', mapContenedorRow, convertirFilaContenedor]
     ];
 
-    // Importar overrides de tiempo desde Sheets
     const overridesSheets = datos['TIEMPO_OVERRIDES'] || [];
     let overridesImportados = 0;
     overridesSheets.forEach(row => {
@@ -2169,18 +2057,22 @@ async function importarDesdeSheets() {
 window.importarDesdeSheets = importarDesdeSheets;
 
 async function boot() {
-
-    // Configurar UI
     fillMachineSelect('f-maquina');
     fillMachineSelect('p-maquina');
     fillMachineSelect('r-maquina');
     fillMachineSelect('rnp-maquina');
+
+    fillMachineSelect('rp-maquina');
+    const rpMaquina = document.getElementById('rp-maquina');
+    if (rpMaquina) {
+        rpMaquina.innerHTML = '<option value="">Todas</option>' + rpMaquina.innerHTML.replace('<option value="">Selecciona...</option>', '');
+    }
+
     fillMonthSelect('r-mes');
     fillMonthSelect('rk-mes');
     fillMonthSelect('rm-mes');
     fillMonthSelect('rt-mes');
     fillMonthSelect('rc-mes');
-    fillMonthSelect('rtop-mes');
     fillMonthSelect('rnp-mes');
     fillMonthSelect('rp-mes');
 
@@ -2191,21 +2083,16 @@ async function boot() {
     setMonthSelects();
     setupTabs();
 
-    // Cargar datos
     await loadAll();
 
-    // Precargar herencia de horarios del día actual
+    document.getElementById('cfg-webhook-url').value = SHEETS_CONFIG.url || '';
+    document.getElementById('cfg-webhook-enabled').checked = !!SHEETS_CONFIG.enabled;
+
     const hoy = getToday();
     const maqInicial = document.getElementById('f-maquina').value;
     if (maqInicial) aplicarHoraHerencia('f-hora-inicio', 'f-hora-fin', maqInicial, hoy);
     aplicarHoraHerencia('m-hora-inicio', 'm-hora-fin', 'manual', hoy);
 
-    // Precargar configuración de Google Sheets en el formulario
-    //aqui se precargan los datos 
-    document.getElementById('cfg-webhook-url').value = SHEETS_CONFIG.url || 'https://script.google.com/macros/s/AKfycbxkND7SULKytuYTQog2DDx6XSQ8XtUxaJhii0PLqrTQ5uZSOc5ZsRWClfuQImcCnJCg/exec'; //esta url es la que se puede remplazar recuerda dejar ('';)
-    document.getElementById('cfg-webhook-enabled').checked = !!SHEETS_CONFIG.enabled;
-
-    // Renderizar tablas
     renderMaquinasTable();
     renderManualesTable();
     renderParoTable();
@@ -2214,34 +2101,28 @@ async function boot() {
 }
 
 /* ================================================================
-   EXPONER FUNCIONES AL ÁMBITO GLOBAL (para onclick en HTML)
+   EXPONER FUNCIONES AL AMBITO GLOBAL
    ================================================================ */
 
-// Captura - Máquinas
 window.addMaquinaEntry = addMaquinaEntry;
 window.deleteMaquinaEntry = deleteMaquinaEntry;
 window.handleImportMaquinas = handleImportMaquinas;
 window.exportMaquinas = exportMaquinas;
 
-// Captura - Manuales
 window.addManualEntry = addManualEntry;
 window.deleteManualEntry = deleteManualEntry;
 window.handleImportManuales = handleImportManuales;
 window.exportManuales = exportManuales;
 
-// Captura - Paro
 window.addParoEntry = addParoEntry;
 window.deleteParoEntry = deleteParoEntry;
 
-// Captura - Tarimas
 window.addTarimaEntry = addTarimaEntry;
 window.deleteTarimaEntry = deleteTarimaEntry;
 
-// Captura - Contenedores
 window.addContenedorEntry = addContenedorEntry;
 window.deleteContenedorEntry = deleteContenedorEntry;
 
-// Resúmenes
 window.renderResumenMaquina = renderResumenMaquina;
 window.updateTiempoOverride = updateTiempoOverride;
 window.exportResumenMaquina = exportResumenMaquina;
@@ -2258,21 +2139,10 @@ window.exportResumenTarimas = exportResumenTarimas;
 window.renderResumenContenedores = renderResumenContenedores;
 window.exportResumenContenedores = exportResumenContenedores;
 
-window.renderTop5 = renderTop5;
 window.renderFrecuenciaNP = renderFrecuenciaNP;
-
 window.renderFrecuenciaParos = renderFrecuenciaParos;
 window.exportFrecuenciaParos = exportFrecuenciaParos;
 
-// UI
 window.updateSubProc = updateSubProc;
 
-/* ================================================================
-   INICIAR APLICACIÓN
-   ================================================================ */
-
 boot();
-
-/* ================================================================
-   FIN DEL ARCHIVO
-   ================================================================ */

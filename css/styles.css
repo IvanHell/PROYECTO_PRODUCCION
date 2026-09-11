@@ -570,6 +570,7 @@ input#f-tiempo-disp.bloqueado {
 footer {
     grid-column: 1 / -1;
     text-align: center;
+    opacity: 50%;
     margin-top: 20px;
     padding-top: 15px;
     border-top: 1px solid var(--light-color);
