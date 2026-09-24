@@ -11,7 +11,7 @@
 <body>
     <!-- HEADER -->
     <header>
-        <h1>Panel de Producción — Máquinas VALLE 5.0 ("Online")</h1>
+        <h1>Panel de Producción - Máquinas VALLE 5.5 🟢</h1>
         <p>Captura una sola vez, obtén los resúmenes automáticamente. Reemplaza los archivos alimentadores y el reporte final.</p>
     </header>
 
@@ -23,7 +23,7 @@
             <button class="tab-btn" data-tab="config">⚙️ Configuración</button>
         </div>
 
-        <!-- ===================== PANEL CAPTURA ===================== -->
+        <!-- PANEL CAPTURA  -->
         <div class="panel active" id="panel-captura">
             <div class="subtabs">
                 <button class="subtab-btn active" data-sub="cap-maquinas"> Producción Máquinas</button>
@@ -32,12 +32,10 @@
                 <button class="subtab-btn" data-sub="cap-contenedores"> Contenedores</button>
             </div>
 
-            <!-- ========================================================== -->
             <!-- SUBPANEL: MÁQUINAS (incluye Producción + Paro) -->
-            <!-- ========================================================== -->
             <div class="subpanel active" id="cap-maquinas">
 
-                <!-- --- PRODUCCIÓN MÁQUINAS --- -->
+                <!-- --- PRODUCCIÓN MÁQUINAS -->
                 <div class="card">
                     <h2> Nueva captura de producción (Máquinas)</h2>
                     <div class="grid">
@@ -87,10 +85,10 @@
                     <div class="tablewrap"><table id="tbl-maquinas"><thead></thead><tbody></tbody></table></div>
                 </div>
 
-                <!-- --- SEPARADOR --- -->
+            <!-- SEPARADOR -->
                 <hr style="margin:24px 0;border:1px dashed var(--line);">
 
-                <!-- --- TIEMPOS DE PARO --- -->
+            <!-- TIEMPOS DE PARO -->
                 <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">
                     <span style="font-size:18px;font-weight:bold;"> Tiempos de Paro</span>
                     <span style="font-size:12px;color:var(--sub);">(Registros asociados a máquinas)</span>
@@ -114,9 +112,8 @@
                 </div>
             </div>
 
-            <!-- ========================================================== -->
             <!-- SUBPANEL: MANUALES -->
-            <!-- ========================================================== -->
+           
             <div class="subpanel" id="cap-manuales">
                 <div class="card">
                     <h2>Nueva captura de producción (Manuales)</h2>
@@ -165,9 +162,8 @@
                 </div>
             </div>
 
-            <!-- ========================================================== -->
             <!-- SUBPANEL: TARIMAS -->
-            <!-- ========================================================== -->
+            
             <div class="subpanel" id="cap-tarimas">
                 <div class="card">
                     <h2>Nueva captura de Tarimas</h2>
@@ -186,9 +182,7 @@
                 </div>
             </div>
 
-            <!-- ========================================================== -->
             <!-- SUBPANEL: CONTENEDORES -->
-            <!-- ========================================================== -->
             <div class="subpanel" id="cap-contenedores">
                 <div class="card">
                     <h2>Nueva captura de Contenedores</h2>

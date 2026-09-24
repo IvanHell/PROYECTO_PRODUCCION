@@ -1,9 +1,3 @@
-/* ===================================================================
-   PANEL DE PRODUCCION — MAQUINAS VALLE (v2)
-   Todos los JavaScript en un solo archivo
-   Incluye: Maquinas, Manuales, Paro, Tarimas, Contenedores + Excel
-   =================================================================== */
-
 /* ======================= CONFIGURACION ======================= */
 
 const MACHINES = [
@@ -21,6 +15,11 @@ const OPERACIONES = ['DESPIQUE', 'ARMADO', 'CORTE', 'GRAPADO', 'PEGADO', 'ENSAMB
 
 const DIAS_ABR = ['D', 'L', 'M', 'MI', 'J', 'V', 'S'];
 const MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+
+/* ======================= CONFIGURACION GOOGLE SHEETS ======================= */
+
+const SHEETS_WEBHOOK_URL = 'https://script.google.com/macros/s/AKfycbxkND7SULKytuYTQog2DDx6XSQ8XtUxaJhii0PLqrTQ5uZSOc5ZsRWClfuQImcCnJCg/exec';
+const SHEETS_AUTO_ENABLED = true; // true = sincronización automática siempre activa
 
 /* ======================= CACHE CLIENTE ======================= */
 const SHEETS_CLIENT_CACHE = {};
@@ -275,9 +274,8 @@ function updateSubProc() {
 }
 window.updateSubProc = updateSubProc;
 
-/* ================================================================
-   OPERADORES DINAMICOS
-   ================================================================ */
+/* ======================= OPERADORES DINAMICOS ======================= */
+
 
 function makeOperadorRow(containerId, rrhhId, primero) {
     const row = document.createElement('div');
@@ -401,9 +399,8 @@ function setMonthSelects() {
     });
 }
 
-/* ================================================================
-   HERENCIA DE HORARIOS
-   ================================================================ */
+
+/* ============== HERENCIA DE HORARIOS   ======================== */
 
 const LAST_END_KEY = LS_PREFIX + 'ultima-hora-fin-';
 
@@ -444,9 +441,7 @@ function aplicarHoraHerencia(inputInicioId, inputFinId, contexto, fechaActual) {
     if (inputInicioId === 'm-hora-inicio') calcularTiempoManual();
 }
 
-/* ================================================================
-   EXCEL IMPORT / EXPORT
-   ================================================================ */
+/* ======================= EXCEL IMPORT / EXPORT ======================= */
 
 function downloadExcel(dataArrayOfObjects, filename, sheetName) {
     const ws = XLSX.utils.json_to_sheet(dataArrayOfObjects);
@@ -455,9 +450,7 @@ function downloadExcel(dataArrayOfObjects, filename, sheetName) {
     XLSX.writeFile(wb, filename);
 }
 
-/* ================================================================
-   RENDERIZADO DE TABLAS (CAPTURA)
-   ================================================================ */
+/* ======================= RENDERIZADO DE TABLAS (CAPTURA) ======================= */
 
 function renderMaquinasTable() {
     const t = document.getElementById('tbl-maquinas');
@@ -573,9 +566,9 @@ function renderContenedoresTable() {
         `<tr><td colspan="5" class="empty">Sin registros este mes</td></tr>`;
 }
 
-/* ================================================================
-   CAPTURA DE DATOS
-   ================================================================ */
+
+/* =======================>>CAPTURA DE DATOS<<======================= */
+
 
 // ===== MAQUINAS =====
 
@@ -623,11 +616,12 @@ async function addMaquinaEntry() {
         updateTiempoDispField();
     }
 
-    // >>> HERENCIA DE HORARIO <<<
+    
+    // HERENCIA DE HORARIO---------------------------------------------
     const finGuardado = val('f-hora-fin');
     guardarUltimaHoraFin(maquina, finGuardado, fecha);
     aplicarHoraHerencia('f-hora-inicio', 'f-hora-fin', maquina, fecha);
-    // -----------------------------
+    // ----------------------------------------------------------------
 
     setStatus('status-maquinas', 'Guardado ✓ — siguiente captura desde las ' + finGuardado);
     renderMaquinasTable();
@@ -700,7 +694,7 @@ function exportMaquinas() {
     downloadExcel(data, 'produccion_maquinas.xlsx', 'PRODUCCION');
 }
 
-// ===== MANUALES =====
+/* ======================= MANUALES ======================= */
 
 async function addManualEntry() {
     const fecha = val('m-fecha');
@@ -737,11 +731,11 @@ async function addManualEntry() {
     document.querySelectorAll('.m-op').forEach(cb => cb.checked = false);
     document.getElementById('m-subproc').value = '';
 
-    // >>> HERENCIA DE HORARIO <<<
+    // HERENCIA DE HORARIO ---------------------------------------------
     const finGuardado = val('m-hora-fin');
     guardarUltimaHoraFin('manual', finGuardado, fecha);
     aplicarHoraHerencia('m-hora-inicio', 'm-hora-fin', 'manual', fecha);
-    // -----------------------------
+    // ----------------------------------------------------------------
 
     setStatus('status-manuales', 'Guardado ✓ — siguiente captura desde las ' + finGuardado);
     renderManualesTable();
@@ -808,7 +802,7 @@ function exportManuales() {
     downloadExcel(data, 'produccion_manuales.xlsx', 'PRODUCCION');
 }
 
-// ===== PARO =====
+/* ======================= PARO ======================= */
 
 async function addParoEntry() {
     const fecha = val('p-fecha');
@@ -838,7 +832,7 @@ async function deleteParoEntry(id) {
     renderParoTable();
 }
 
-// ===== TARIMAS =====
+/* ======================= TARIMAS ======================= */
 
 async function addTarimaEntry() {
     const fecha = val('t-fecha');
@@ -867,7 +861,7 @@ async function deleteTarimaEntry(id) {
     renderTarimasTable();
 }
 
-// ===== CONTENEDORES =====
+/* ======================= CONTENEDORES ======================= */
 
 async function addContenedorEntry() {
     const fecha = val('c-fecha');
@@ -896,9 +890,7 @@ async function deleteContenedorEntry(id) {
     renderContenedoresTable();
 }
 
-/* ================================================================
-   RESUMENES
-   ================================================================ */
+/* ======================= RESUMENES ======================= */
 
 let lastResumenMaquinaRows = [];
 let lastResumenKitRows = [];
@@ -907,7 +899,7 @@ let lastResumenTarimasRows = [];
 let lastResumenContenedoresRows = [];
 let lastFrecuenciaParosRows = [];
 
-// ===== RESUMEN: MAQUINAS =====
+/* ======================= RESUMEN: MAQUINAS ======================= */
 
 async function renderResumenMaquina(forceRefresh = false) {
     const maquina = val('r-maquina');
@@ -1598,9 +1590,7 @@ function calcularTiempoManual() {
 }
 window.calcularTiempoManual = calcularTiempoManual;
 
-/* ================================================================
-   SINCRONIZACION CON GOOGLE SHEETS
-   ================================================================ */
+/* ===================== SINCRONIZACION CON GOOGLE SHEETS ========================= */
 
 function mapMaquinaRow(e) {
     return {
@@ -1721,9 +1711,7 @@ window.guardarConfigSheets = guardarConfigSheets;
 window.probarConexionSheets = probarConexionSheets;
 window.reenviarTodoASheets = reenviarTodoASheets;
 
-/* ================================================================
-   IMPORTAR (LEER) DESDE GOOGLE SHEETS
-   ================================================================ */
+/* ===================== IMPORTAR (LEER) DESDE GOOGLE SHEETS ===================== */
 
 function buildRowKey(row) {
     return Object.keys(row).sort().map(k => {
@@ -2085,8 +2073,23 @@ async function boot() {
 
     await loadAll();
 
-    document.getElementById('cfg-webhook-url').value = SHEETS_CONFIG.url || '';
-    document.getElementById('cfg-webhook-enabled').checked = !!SHEETS_CONFIG.enabled;
+    // ===== AUTOCONFIGURACION DE GOOGLE SHEETS =====
+    // Si no hay URL guardada o está vacía, usa la URL predefinida.
+    // Si la sincronización no está habilitada, la activa automáticamente.
+    if (!SHEETS_CONFIG.url || SHEETS_CONFIG.url.trim() === '') {
+        SHEETS_CONFIG.url = SHEETS_WEBHOOK_URL;
+    }
+    if (SHEETS_AUTO_ENABLED && !SHEETS_CONFIG.enabled) {
+        SHEETS_CONFIG.enabled = true;
+    }
+    // Guarda la configuración resultante (por si se autocargó)
+    await saveObj('config-sheets-sync', SHEETS_CONFIG);
+
+    // Refleja el estado en los inputs del panel de configuración
+    const urlInput = document.getElementById('cfg-webhook-url');
+    const enabledInput = document.getElementById('cfg-webhook-enabled');
+    if (urlInput) urlInput.value = SHEETS_CONFIG.url || '';
+    if (enabledInput) enabledInput.checked = !!SHEETS_CONFIG.enabled;
 
     const hoy = getToday();
     const maqInicial = document.getElementById('f-maquina').value;
@@ -2100,9 +2103,7 @@ async function boot() {
     renderContenedoresTable();
 }
 
-/* ================================================================
-   EXPONER FUNCIONES AL AMBITO GLOBAL
-   ================================================================ */
+/* =========== EXPONER FUNCIONES AL AMBITO GLOBAL ========= */
 
 window.addMaquinaEntry = addMaquinaEntry;
 window.deleteMaquinaEntry = deleteMaquinaEntry;
