@@ -578,3 +578,22 @@ footer {
     font-size: 0.9rem;
         
 }
+
+/* ===== FILAS ESPECIALES EN RESUMENES ===== */
+.fila-finde {
+    background: #fafafa;
+    color: #9ca3af;
+}
+
+.fila-finde td {
+    font-style: italic;
+}
+
+.fila-festivo {
+    background: #fef3c7;
+    color: #92400e;
+}
+
+.fila-festivo td {
+    font-weight: bold;
+}

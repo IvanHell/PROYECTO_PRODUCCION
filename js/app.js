@@ -16,6 +16,31 @@ const OPERACIONES = ['DESPIQUE', 'ARMADO', 'CORTE', 'GRAPADO', 'PEGADO', 'ENSAMB
 const DIAS_ABR = ['D', 'L', 'M', 'MI', 'J', 'V', 'S'];
 const MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
 
+
+/* ======================= DIAS FESTIVOS ======================= */
+// Festivos oficiales en México + los que apliquen en tu empresa.
+// Formato: 'YYYY-MM-DD'. Edita esta lista cada año.
+const DIAS_FESTIVOS = {
+
+    '2026-01-01': 'Año Nuevo',
+    '2026-02-02': 'Constitución',
+    '2026-03-16': 'Benito Juárez',
+    '2026-05-01': 'Día del Trabajo',
+    '2026-09-16': 'Independencia',
+    '2026-11-16': 'Revolución',
+    '2026-12-25': 'Navidad',
+
+};
+
+function esFestivo(fechaISO) {
+    return DIAS_FESTIVOS.hasOwnProperty(fechaISO);
+}
+
+function nombreFestivo(fechaISO) {
+    return DIAS_FESTIVOS[fechaISO] || '';
+}
+
+
 /* ======================= CONFIGURACION GOOGLE SHEETS ======================= */
 
 const SHEETS_WEBHOOK_URL = 'https://script.google.com/macros/s/AKfycbxkND7SULKytuYTQog2DDx6XSQ8XtUxaJhii0PLqrTQ5uZSOc5ZsRWClfuQImcCnJCg/exec';
@@ -23,7 +48,7 @@ const SHEETS_AUTO_ENABLED = true; // true = sincronización automática siempre 
 
 /* ======================= CACHE CLIENTE ======================= */
 const SHEETS_CLIENT_CACHE = {};
-const CACHE_TTL_MS = 2 * 60 * 1000; // 2 minutos
+const CACHE_TTL_MS = 30 * 60 * 1000; // 2 minutos
 
 /* ======================= HELPERS DE CONFIGURACION ======================= */
 
@@ -41,12 +66,15 @@ function normalizeMachine(raw) {
 }
 
 function defaultTiempoDisponible(machineId, dateStr) {
+    // Festivo → 0 minutos (aunque caiga en día hábil)
+    if (esFestivo(dateStr)) return 0;
+
     const m = machineById(machineId);
     const d = new Date(dateStr + 'T00:00:00');
     const dow = d.getDay();
-    if (dow === 0 || dow === 6) return 0;
-    if (dow === 2) return 600;
-    return 570;
+    if (dow === 0 || dow === 6) return 0;  // Sábado y Domingo → 0
+    if (dow === 2) return 600;              // Martes → 600 min
+    return 570;                             // Lunes a Viernes → 570 min
 }
 
 function pad2(n) {
@@ -938,15 +966,34 @@ async function renderResumenMaquina(forceRefresh = false) {
     const diasEnMes = getDaysInMonth(anio, mes);
     const cfg = machineById(maquina);
 
-    let totalProd = 0, totalParo = 0, sumPct = 0, nPct = 0;
+    // Totales del mes
+    let totalProd = 0;
+    let totalParo = 0;
+    let sumPctPonderado = 0;   // Suma de (produccion real) para el cálculo ponderado
+    let sumEsperado = 0;        // Suma de (produccion esperada) para el cálculo ponderado
+    let sumPctSimple = 0;
+    let nPct = 0;
+    let diasLaborables = 0;
+
     const rowsHtml = [];
     lastResumenMaquinaRows = [];
 
     for (let d = 1; d <= diasEnMes; d++) {
         const fecha = `${anio}-${pad2(mes)}-${pad2(d)}`;
         const dow = getDayOfWeek(fecha);
+        const esFinSemana = (dow === 0 || dow === 6);
+        const esFestivoDia = esFestivo(fecha);
+
         const entriesDia = datosMaquinasDelMes.filter(e => e.fecha === fecha && e.maquina === maquina);
         const produccion = sum(entriesDia, 'cant');
+        const tieneCaptura = entriesDia.length > 0;
+
+        // ===== REGLA DE OCULTADO =====
+        // Ocultar fines de semana y festivos, salvo que haya captura ese día.
+        if ((esFinSemana || esFestivoDia) && !tieneCaptura) {
+            continue;
+        }
+
         const partidas = new Set(entriesDia.map(e => (e.np || '').trim().toUpperCase()).filter(x => x)).size ||
             (entriesDia.length ? 1 : 0);
 
@@ -978,18 +1025,38 @@ async function renderResumenMaquina(forceRefresh = false) {
         const operadoresDia = [...new Set(entriesDia.map(e => e.operador).filter(x => x))].join(', ');
         const fechaTitle = operadoresDia ? operadoresDia : 'Sin operador capturado';
 
+        // ===== ACUMULADORES =====
+        // Producción total: SIEMPRE suma (aunque no haya tiempo disponible)
+        totalProd += produccion;
+        totalParo += paroMin;
+
+        // Cumplimiento: solo días con tiempo disponible > 0
         if (tiempoNum > 0) {
-            totalProd += produccion;
-            totalParo += paroMin;
-            sumPct += pct;
+            diasLaborables++;
+            sumPctPonderado += produccion;
+            sumEsperado += esperado;
+            sumPctSimple += pct;
             nPct++;
         }
 
-        const pctPill = tiempoNum === 0 ? '' :
-            `<span class="pill ${pct >= 0.9 ? 'good' : pct >= 0.7 ? 'warn' : 'bad'}">${(pct * 100).toFixed(0)}%</span>`;
+        // ===== ETIQUETAS ESPECIALES =====
+        let etiquetaDia = DIAS_ABR[dow];
+        let claseFila = '';
+        if (esFestivoDia) {
+            etiquetaDia = '🎉';
+            claseFila = 'fila-festivo';
+        } else if (esFinSemana) {
+            claseFila = 'fila-finde';
+        }
 
-        rowsHtml.push(`<tr>
-            <td>${DIAS_ABR[dow]}</td>
+        const pctPill = tiempoNum === 0
+            ? '<span class="pill" style="background:#e5e7eb;color:#6b7280;">N/A</span>'
+            : `<span class="pill ${pct >= 0.9 ? 'good' : pct >= 0.7 ? 'warn' : 'bad'}">${(pct * 100).toFixed(0)}%</span>`;
+
+        const tituloFestivo = esFestivoDia ? ` title="${nombreFestivo(fecha)}"` : '';
+
+        rowsHtml.push(`<tr class="${claseFila}">
+            <td${tituloFestivo}>${etiquetaDia}</td>
             <td class="op-tooltip" data-operadores="${fechaTitle}">${formatDateDisplay(fecha)}</td>
             <td><input type="number" style="width:70px" value="${tiempoDisp}" onchange="window.updateTiempoOverride('${maquina}','${fecha}',this.value)"></td>
             <td>${produccion}</td>
@@ -1002,14 +1069,14 @@ async function renderResumenMaquina(forceRefresh = false) {
         </tr>`);
 
         lastResumenMaquinaRows.push({
-            DIA: DIAS_ABR[dow],
+            DIA: esFestivoDia ? 'Festivo' : DIAS_ABR[dow],
             FECHA: formatDateDisplay(fecha),
             'TIEMPO DISPONIBLE': tiempoNum,
             PRODUCCION: produccion,
             PARTIDAS: partidas,
             REAL: Number(real.toFixed(2)),
             ESPERADO: Number(esperado.toFixed(2)),
-            '%': Math.round(pct * 100),
+            '%': tiempoNum > 0 ? Math.round(pct * 100) : 'N/A',
             'PARO (MIN)': paroMin,
             MOTIVOS: motivos
         });
@@ -1018,14 +1085,22 @@ async function renderResumenMaquina(forceRefresh = false) {
     const t = document.getElementById('tbl-resumen-maquina');
     t.querySelector('thead').innerHTML =
         `<tr><th>Dia</th><th>Fecha</th><th>Tiempo Disp. (min)</th><th>Produccion</th><th>Partidas</th><th>Real (u/min)</th><th>Esperado (u/min)</th><th>%</th><th>Paro (min)</th><th>Motivo(s)</th></tr>`;
-    t.querySelector('tbody').innerHTML = rowsHtml.join('');
+    t.querySelector('tbody').innerHTML = rowsHtml.length
+        ? rowsHtml.join('')
+        : `<tr><td colspan="10" class="empty">Sin días laborables en el mes</td></tr>`;
 
-    const pctProm = nPct ? (sumPct / nPct * 100).toFixed(0) : '-';
+    // ===== KPIs =====
+    // Cumplimiento ponderado = producción real total / producción esperada total (solo días con tiempo)
+    const eficienciaPonderada = sumEsperado > 0 ? (sumPctPonderado / sumEsperado) * 100 : 0;
+    const pctSimpleProm = nPct ? (sumPctSimple / nPct * 100) : 0;
+
     document.getElementById('kpi-maquina').innerHTML = `
-        <div class="kpi"><div class="num">${totalProd.toLocaleString()}</div><div class="lbl">Produccion total del mes</div></div>
-        <div class="kpi"><div class="num">${pctProm}${nPct ? '%' : ''}</div><div class="lbl">Cumplimiento promedio</div></div>
+        <div class="kpi"><div class="num">${totalProd.toLocaleString()}</div><div class="lbl">Producción total del mes</div></div>
+        
+        <div class="kpi"><div class="num">${pctSimpleProm.toFixed(1)}%</div><div class="lbl">Cumplimiento promedio simple</div></div>
+        <div class="kpi"><div class="num">${diasLaborables}</div><div class="lbl">Días laborables contados</div></div>
         <div class="kpi"><div class="num">${totalParo}</div><div class="lbl">Minutos de paro en el mes</div></div>
-    `;
+    `; //<div class="kpi"><div class="num">${eficienciaPonderada.toFixed(1)}%</div><div class="lbl">Eficiencia del mes (ponderada)</div></div>
 
     renderTop5Maquina(maquina, datosMaquinasDelMes);
 }
@@ -1170,6 +1245,78 @@ function exportResumenManuales() {
 }
 
 // ===== RESUMEN: TARIMAS (desglose diario) =====
+
+// ===== RESUMEN: TARIMAS (desglose diario) =====
+
+async function renderResumenTarimas(forceRefresh = false) {
+    const mes = parseInt(val('rt-mes'), 10);
+    const anio = parseInt(val('rt-anio'), 10);
+
+    const t = document.getElementById('tbl-resumen-tarimas');
+    t.querySelector('thead').innerHTML = '';
+    t.querySelector('tbody').innerHTML = `<tr><td colspan="5" class="empty"><div class="spinner-inline"></div> Consultando datos...</td></tr>`;
+
+    const resultado = await obtenerDatosResumen(mes, anio, forceRefresh);
+    const datosSheets = resultado.datos;
+    mostrarFuenteDatos('res-tarimas', resultado.fuente, resultado.cacheado);
+
+    const rows = (datosSheets.TARIMAS || [])
+        .map(convertirFilaTarima)
+        .filter(Boolean);
+
+    const diasEnMes = getDaysInMonth(anio, mes);
+    let totalMes = 0;
+    const rowsHtml = [];
+    lastResumenTarimasRows = [];
+
+    for (let d = 1; d <= diasEnMes; d++) {
+        const fecha = `${anio}-${pad2(mes)}-${pad2(d)}`;
+        const dow = getDayOfWeek(fecha);
+        const esFinSemana = (dow === 0 || dow === 6);
+        const esFestivoDia = esFestivo(fecha);
+
+        const entriesDia = rows.filter(e => e.fecha === fecha);
+        const cantDia = sum(entriesDia, 'cant');
+
+        // ===== REGLA DE OCULTADO =====
+        // Ocultar fines de semana y festivos, salvo que haya captura ese día.
+        if ((esFinSemana || esFestivoDia) && entriesDia.length === 0) {
+            continue;
+        }
+
+        const personas = [...new Set(entriesDia.map(e => e.persona).filter(x => x))].join(', ') || '-';
+        const tipos    = [...new Set(entriesDia.map(e => e.tipo).filter(x => x))].join(', ') || '-';
+
+        totalMes += cantDia;
+
+        // ===== ETIQUETAS ESPECIALES =====
+        let etiquetaDia = DIAS_ABR[dow];
+        let claseFila = '';
+        if (esFestivoDia) { etiquetaDia = '🎉'; claseFila = 'fila-festivo'; }
+        else if (esFinSemana) { claseFila = 'fila-finde'; }
+
+        rowsHtml.push(`<tr class="${claseFila}">
+            <td${esFestivoDia ? ` title="${nombreFestivo(fecha)}"` : ''}>${etiquetaDia}</td>
+            <td>${formatDateDisplay(fecha)}</td>
+            <td class="left">${personas}</td>
+            <td class="left">${tipos}</td>
+            <td>${cantDia || ''}</td>
+        </tr>`);
+
+        lastResumenTarimasRows.push({
+            DIA: esFestivoDia ? 'Festivo' : DIAS_ABR[dow],
+            FECHA: formatDateDisplay(fecha),
+            PERSONAS: personas,
+            TIPOS: tipos,
+            CANTIDAD: cantDia
+        });
+    }
+
+    t.querySelector('thead').innerHTML =
+        `<tr><th>Dia</th><th>Fecha</th><th>Persona(s)</th><th>Tipo(s)</th><th>Cantidad</th></tr>`;
+    t.querySelector('tbody').innerHTML = rowsHtml.join('') +
+        `<tr class="totals"><td colspan="4">Total del mes</td><td>${totalMes}</td></tr>`;
+}
 
 async function renderResumenTarimas(forceRefresh = false) {
     const mes = parseInt(val('rt-mes'), 10);
