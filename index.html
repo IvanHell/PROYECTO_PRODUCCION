@@ -11,7 +11,7 @@
 <body>
     <!-- HEADER -->
     <header>
-        <h1>Panel de Producción - Máquinas VALLE 5.7 🟢</h1>
+        <h1>Panel de Producción - Máquinas VALLE 5.8 🔴</h1>
         <p>Captura una sola vez, obtén los resúmenes automáticamente. Reemplaza los archivos alimentadores y el reporte final.</p>
     </header>
 
@@ -100,7 +100,21 @@
                         <div><label>Fecha</label><input type="date" id="p-fecha"></div>
                         <div><label>Máquina</label><select id="p-maquina"><option value="">Selecciona...</option></select></div>
                         <div><label>Minutos de paro</label><input type="number" id="p-minutos" min="0"></div>
-                        <div><label>Motivo</label><input id="p-motivo" placeholder="Falla mecánica, cambio de MP..."></div>
+                        <!--<div><label>Motivo</label><input id="p-motivo" placeholder="Falla mecánica, cambio de MP..."></div>-->
+                        <div>
+                        <label>Motivo</label>
+                            <select id="p-motivo">
+                            <option value="">Selecciona...</option>
+                            <option value="Calidad">Calidad</option>
+                            <option value="Materia Prima">Materia Prima</option>
+                            <option value="Programación">Programación</option>
+                            <option value="Mantenimiento">Mantenimiento</option>
+                            <option value="Ajuste de maquina">Ajuste de maquina</option>
+                            <option value="Entrega de material ya procesado">Entrega de material ya procesado</option>
+                            <option value="Apoyo a otra área">Apoyo a otra área</option>
+                            <option value="Admin.">Admin.</option>
+                            </select>
+                            </div>
                     </div>
                     <button class="btn" onclick="window.addParoEntry()">Agregar registro</button>
                     <span class="status" id="status-paro"></span>
