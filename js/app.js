@@ -13,8 +13,38 @@ const MACHINES = [
 
 const OPERACIONES = ['DESPIQUE', 'ARMADO', 'CORTE', 'GRAPADO', 'PEGADO', 'ENSAMBLE', 'DOBLADO', 'CONTEO', 'SELLADO', 'AMARRADO', 'TARIMA'];
 
+const MOTIVOS_PARO = [
+    'Arranque de maquina',
+    'Calidad',
+    'Materia Prima',
+    'Programación',
+    'Mantenimiento',
+    'Ajuste de maquina',
+    'Entrega de material ya procesado',
+    'Manejo de Scrap',
+    'Materiales Indirectos',
+    'Apoyo a otra área',
+    'Administración'
+];
+
+const MOTIVOS_PARO_DESC = {
+    'Arranque de maquina': 'Tiempo de calentamiento, preparación inicial, primera pieza, ajustes de arranque del turno o después de un paro largo.',
+    'Calidad': 'Producto o material rechazado por especificación, retrabajo, piezas no conformes, ajuste por defecto de calidad detectado en proceso o por el cliente.',
+    'Materia Prima': 'Falta de materia prima, cuadrado de material, aprobación pendiente por dimensiones, material en mal estado, espera de proveedor.',
+    'Programación': 'Cambio de producto no planeado, falta de orden de trabajo, espera de instrucciones, reprogramación de lote, ajuste de prioridades por planeación.',
+    'Mantenimiento': 'Falla mecánica, falla eléctrica, cambio de herramienta/dado, mantenimiento preventivo o correctivo, espera de refacciones.',
+    'Ajuste de maquina': 'Ajustes de maquina, presión, guías, montaje de suajes.',
+    'Entrega de material ya procesado': 'Espera para entregar producto terminado a la siguiente estación, llevar el material almacen  de producto terminado, falta de transporte interno, espera de montacargas.',
+    'Manejo de Scrap': 'Retiro de desperdicio, limpieza de recortes, cambio de contenedor de scrap, atoro por acumulación de material de desecho.',
+    'Materiales Indirectos': 'Falta de cinta, pegamento, grapas, silicon, etiquetas, tarimas, solventes u otros insumos que no son materia prima directa.',
+    'Apoyo a otra área': 'El operador o la máquina se destina a apoyar otra estación, línea o área (manuales, empaque, carga, etc.).',
+    'Administración': 'Juntas, papeleo, espera de autorización, capacitación, retardos/ausencias del personal, actividades administrativas que detienen la máquina.'
+};
+
+
 const DIAS_ABR = ['D', 'L', 'M', 'MI', 'J', 'V', 'S'];
 const MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+
 
 
 /* ======================= DIAS FESTIVOS ======================= */
@@ -128,6 +158,24 @@ function parseExcelDate(v) {
 
 function uid() {
     return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+}
+
+function slugMotivo(m) {
+    const map = {
+        'Arranque de maquina': 'Arranque de maquina',
+        'Orden y limpieza': 'Orden y limpieza',
+        'Calidad': 'Calidad',
+        'Materia Prima': 'Materia Prima',
+        'Programación' : 'Programación',
+        'Mantenimiento':'Mantenimiento',
+        'Ajuste de maquina':'Ajuste de maquina',
+        'Entrega de material ya procesado':'Entrega de material ya procesado',
+        'Manejo de Scrap':'Manejo de Scrap',
+        'Materiales Indirectos':'Materiales Indirectos',
+        'Apoyo a otra área':'Apoyo a otra área',
+        'Administración':'Administración'
+    };
+    return map[m] || 'Administración';
 }
 
 /* ======================= STORAGE HELPERS ======================= */
@@ -547,7 +595,7 @@ function renderParoTable() {
                 <td>${formatDateDisplay(e.fecha)}</td>
                 <td class="left">${machineById(e.maquina)?.label || e.maquina}</td>
                 <td>${e.minutos || 0}</td>
-                <td class="left">${e.motivo || ''}</td>
+                <td class="left">${e.motivo ? `<span class="motivo-pill ${slugMotivo(e.motivo)}">${e.motivo}</span>` : ''}</td>
                 <td><button class="btn small danger" onclick="window.deleteParoEntry('${e.id}')">Borrar</button></td>
             </tr>
         `).join('') :
@@ -1022,6 +1070,7 @@ async function renderResumenMaquina(forceRefresh = false) {
         const paroDia = datosParoDelMes.filter(e => e.fecha === fecha && e.maquina === maquina);
         const paroMin = sum(paroDia, 'minutos');
         const motivos = paroDia.map(e => e.motivo).filter(x => x).join('; ');
+        
         const operadoresDia = [...new Set(entriesDia.map(e => e.operador).filter(x => x))].join(', ');
         const fechaTitle = operadoresDia ? operadoresDia : 'Sin operador capturado';
 
@@ -1536,20 +1585,42 @@ async function renderFrecuenciaParos(forceRefresh = false) {
     const datosSheets = resultado.datos;
     mostrarFuenteDatos('res-paros', resultado.fuente, resultado.cacheado);
 
+    // Filtro por mes/anio en cliente (red de seguridad si el Sheet devuelve todo)
+    const enMes = (fechaISO) => {
+        if (!fechaISO) return false;
+        const d = parseDate(fechaISO);
+        return d.getFullYear() === anio && (d.getMonth() + 1) === mes;
+    };
+
+    // No descartamos filas: si la máquina no se reconoce, la dejamos pasar
     let rows = (datosSheets.PARO || [])
-        .map(convertirFilaParo)
-        .filter(Boolean);
+        .map(row => {
+            const fecha = parseSheetDate(row.FECHA);
+            if (!fecha) return null;
+            return {
+                fecha,
+                maquina: normalizeMachine(row.MAQUINA) || String(row.MAQUINA || '').trim() || 'OTRA',
+                minutos: Number(row.MINUTOS) || 0,
+                motivo: String(row.MOTIVO || '').trim() || 'SIN MOTIVO'
+            };
+        })
+        .filter(r => r && enMes(r.fecha) && r.minutos > 0);
 
     if (maquinaFiltro) {
         rows = rows.filter(e => e.maquina === maquinaFiltro);
     }
 
+    if (!rows.length) {
+        if (cont) cont.innerHTML = '<div class="empty">Sin registros de paro para este mes/máquina.</div>';
+        return;
+    }
+
     const porMotivo = {};
     rows.forEach(e => {
-        const motivo = (e.motivo || 'SIN MOTIVO').trim().toUpperCase();
+        const motivo = e.motivo.toUpperCase();
         if (!porMotivo[motivo]) porMotivo[motivo] = { veces: 0, minutos: 0 };
         porMotivo[motivo].veces += 1;
-        porMotivo[motivo].minutos += Number(e.minutos) || 0;
+        porMotivo[motivo].minutos += e.minutos;
     });
 
     let entries = Object.entries(porMotivo).map(([motivo, data]) => ({
@@ -1558,7 +1629,7 @@ async function renderFrecuenciaParos(forceRefresh = false) {
 
     const totalMinutos = entries.reduce((s, e) => s + e.minutos, 0);
     if (!totalMinutos) {
-        if (cont) cont.innerHTML = '<div class="empty">Sin registros de paro este mes</div>';
+        if (cont) cont.innerHTML = '<div class="empty">Los paros capturados tienen 0 minutos.</div>';
         return;
     }
 
@@ -1657,6 +1728,21 @@ function onMaquinaChange() {
     }
 }
 window.onMaquinaChange = onMaquinaChange;
+
+function onMotivoParoChange() {
+    const motivo = val('p-motivo');
+    const hint = document.getElementById('p-motivo-hint');
+    if (!hint) return;
+
+    if (motivo && MOTIVOS_PARO_DESC[motivo]) {
+        hint.textContent = MOTIVOS_PARO_DESC[motivo];
+        hint.style.display = 'block';
+    } else {
+        hint.textContent = '';
+        hint.style.display = 'none';
+    }
+}
+window.onMotivoParoChange = onMotivoParoChange;
 
 function updateTiempoDispField() {
     const maquina = val('f-maquina');

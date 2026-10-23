@@ -11,7 +11,7 @@
 <body>
     <!-- HEADER -->
     <header>
-        <h1>Panel de Producción - Máquinas VALLE 5.8 🟢</h1>
+        <h1>Panel de Producción - Máquinas VALLE 5.9 🔴</h1>
         <p>Captura una sola vez, obtén los resúmenes automáticamente. Reemplaza los archivos alimentadores y el reporte final.</p>
     </header>
 
@@ -103,10 +103,9 @@
                         <!--<div><label>Motivo</label><input id="p-motivo" placeholder="Falla mecánica, cambio de MP..."></div>-->
                         <div>
                         <label>Motivo</label>
-                           <select id="p-motivo">
+                            <select id="p-motivo" onchange="window.onMotivoParoChange()">
                             <option value="">Selecciona...</option>
                             <option value="Arranque de maquina">Arranque de maquina</option>
-                            <option value="Orden y limpieza">Orden y limpieza</option>
                             <option value="Calidad">Calidad</option>
                             <option value="Materia Prima">Materia Prima</option>
                             <option value="Programación">Programación</option>
@@ -117,7 +116,7 @@
                             <option value="Materiales Indirectos">Materiales Indirectos</option>
                             <option value="Apoyo a otra área">Apoyo a otra área</option>
                             <option value="Administración">Administración</option>
-                            </select>
+                            </select><div id="p-motivo-hint" class="motivo-hint" style="display:none;"></div>
                             </div>
                     </div>
                     <button class="btn" onclick="window.addParoEntry()">Agregar registro</button>
