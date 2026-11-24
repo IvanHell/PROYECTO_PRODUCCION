@@ -1,6 +1,10 @@
-:root {
+/* ===== TEMA CLARO (default) ===== */
+:root,
+[data-theme="light"] {
     --bg: #f4f5f7;
     --card: #ffffff;
+    --card-soft: #f8f9fb;
+    --hover: #eef2ff;
     --ink: #1f2430;
     --sub: #6b7280;
     --line: #e5e7eb;
@@ -9,6 +13,25 @@
     --good: #16a34a;
     --warn: #d97706;
     --bad: #dc2626;
+    --shadow: 0 4px 10px rgba(0, 0, 0, 0.08);
+    --radius: 10px;
+}
+
+/* ===== TEMA OSCURO ===== */
+[data-theme="dark"] {
+    --bg: #0f1115;
+    --card: #1a1d24;
+    --card-soft: #23272f;
+    --hover: #1e293b;
+    --ink: #00359f;
+    --sub: #a3c5fd;
+    --line: #4061a2;
+    --accent: #60a5fa;
+    --accent-ink: #0b1220;
+    --good: #4ade80;
+    --warn: #fbbf24;
+    --bad: #f87171;
+    --shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
     --radius: 10px;
 }
 
@@ -621,4 +644,27 @@ footer {
     font-size: 11.5px;
     color: #1e3a8a;
     line-height: 1.4;
+}
+
+
+/* ===== BOTÓN DE TEMA ===== */
+.theme-toggle {
+    background: var(--card-soft);
+    color: var(--ink);
+    border: 1px solid var(--line);
+    border-radius: 50%;
+    width: 38px;
+    height: 38px;
+    font-size: 17px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.2s ease, transform 0.2s ease;
+    padding: 0;
+}
+
+.theme-toggle:hover {
+    background: var(--hover);
+    transform: rotate(15deg);
 }

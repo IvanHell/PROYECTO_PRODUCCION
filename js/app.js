@@ -15,6 +15,7 @@ const OPERACIONES = ['DESPIQUE', 'ARMADO', 'CORTE', 'GRAPADO', 'PEGADO', 'ENSAMB
 
 const MOTIVOS_PARO = [
     'Arranque de maquina',
+    'Oren y Limpieza',
     'Calidad',
     'Materia Prima',
     'Programación',
@@ -29,6 +30,7 @@ const MOTIVOS_PARO = [
 
 const MOTIVOS_PARO_DESC = {
     'Arranque de maquina': 'Tiempo de calentamiento, preparación inicial, primera pieza, ajustes de arranque del turno o después de un paro largo.',
+    'Orden y Limpieza' : 'Barrer pasillo, recoger material tirado, despejar area',
     'Calidad': 'Producto o material rechazado por especificación, retrabajo, piezas no conformes, ajuste por defecto de calidad detectado en proceso o por el cliente.',
     'Materia Prima': 'Falta de materia prima, cuadrado de material, aprobación pendiente por dimensiones, material en mal estado, espera de proveedor.',
     'Programación': 'Cambio de producto no planeado, falta de orden de trabajo, espera de instrucciones, reprogramación de lote, ajuste de prioridades por planeación.',
@@ -348,6 +350,36 @@ function updateSubProc() {
     const el = document.getElementById('m-subproc');
     if (el) el.value = n;
 }
+
+/* ======================= TEMA CLARO / OSCURO ======================= */
+
+const THEME_KEY = 'panel_produccion_theme';
+
+function getThemeActual() {
+    return document.documentElement.getAttribute('data-theme') || 'light';
+}
+
+function aplicarTema(theme) {
+    document.documentElement.setAttribute('data-theme', theme);
+    const btn = document.getElementById('theme-toggle');
+    if (btn) {
+        btn.textContent = theme === 'dark' ? '☀️' : '🌙';
+        btn.title = theme === 'dark' ? 'Cambiar a tema claro' : 'Cambiar a tema oscuro';
+    }
+}
+
+function toggleTheme() {
+    const actual = getThemeActual();
+    const nuevo = actual === 'dark' ? 'light' : 'dark';
+    aplicarTema(nuevo);
+    try {
+        localStorage.setItem(THEME_KEY, nuevo);
+    } catch (e) { /* ignorar */ }
+}
+
+window.toggleTheme = toggleTheme;
+
+
 window.updateSubProc = updateSubProc;
 
 /* ======================= OPERADORES DINAMICOS ======================= */
@@ -525,6 +557,10 @@ function downloadExcel(dataArrayOfObjects, filename, sheetName) {
     XLSX.utils.book_append_sheet(wb, ws, (sheetName || 'Hoja1').slice(0, 31));
     XLSX.writeFile(wb, filename);
 }
+
+// Aplicar el tema (el script del <head> ya puso el atributo en <html>,
+// aquí solo sincronizamos el icono del botón)
+aplicarTema(getThemeActual());
 
 /* ======================= RENDERIZADO DE TABLAS (CAPTURA) ======================= */
 
