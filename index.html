@@ -6,14 +6,27 @@
     <title>Panel de Producción de Captura</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐦‍🔥</text></svg>">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    
+    <script> (function () {
+    var saved = localStorage.getItem('panel_produccion_theme');
+    var prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    var theme = saved || (prefersDark ? 'dark' : 'light');
+    document.documentElement.setAttribute('data-theme', theme);
+    // Lo aplicamos al <html>, no al <body>, para que el CSS lo vea desde el primer frame
+    })();
+    </script>
+
     <link rel="stylesheet" href="css/styles.css">
 </head>
 <body>
     <!-- HEADER -->
-    <header>
-        <h1>Panel de Producción - Máquinas VALLE 5.9 🟢</h1>
+<header style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
+    <div>
+        <h1>Panel de Producción - Máquinas VALLE 5.9.5 🔴</h1>
         <p>Captura una sola vez, obtén los resúmenes automáticamente. Reemplaza los archivos alimentadores y el reporte final.</p>
-    </header>
+    </div>
+    <button id="theme-toggle" class="theme-toggle" title="Cambiar tema" onclick="window.toggleTheme()">🌙</button>
+</header>
 
     <div class="wrap">
         <!-- TABS PRINCIPALES -->
@@ -106,6 +119,7 @@
                             <select id="p-motivo" onchange="window.onMotivoParoChange()">
                             <option value="">Selecciona...</option>
                             <option value="Arranque de maquina">Arranque de maquina</option>
+                            <option value="Orden y Limpieza">Orden y Limpieza</option>
                             <option value="Calidad">Calidad</option>
                             <option value="Materia Prima">Materia Prima</option>
                             <option value="Programación">Programación</option>
