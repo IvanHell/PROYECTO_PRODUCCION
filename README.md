@@ -1,8 +1,14 @@
-# PROYECTO_PRODUCCION
-plataforma web usable y funcional que actúa como un panel de administración centralizado. El sistema se alimenta directamente de los dos archivos fuente que ya utilizamos (Producción Diaria Manuales y Producción Diaria Máquinas) y, con solo unos pocos clics, genera el reporte completo y los sub-resúmenes requeridos.
+# Panel de Administración Centralizado para la Gestión de Reportes de Producción
+Descripción general
 
-Características y Beneficios Clave:
-•	Automatización Integral: Procesa y consolida datos de ambas fuentes de manera automática, eliminando la transcripción manual.
-•	Eficiencia Comprobada: Reduce el tiempo de generación de reportes de medio turno (aproximadamente 3 horas).
-•	Cero Errores de Transcripción: Al ser un proceso digital, se minimizan drásticamente los errores asociados a la manipulación manual de datos.
-•	Accesibilidad y Facilidad de Uso: Al ser una aplicación web, no requiere instalación y es accesible desde cualquier navegador, con una interfaz intuitiva diseñada para el usuario final.
+Se presenta una plataforma web, usable y funcional, que opera como un panel de administración centralizado. El sistema se alimenta directamente de las dos fuentes de datos ya utilizadas en la operación —Producción Diaria Manuales y Producción Diaria Máquinas— y, mediante unos pocos clics, genera el reporte completo junto con los sub-resúmenes requeridos.
+
+Características y beneficios clave
+
+Automatización integral: procesa y consolida la información proveniente de ambas fuentes de manera automática, eliminando la transcripción manual y la intervención repetitiva del usuario.
+
+Eficiencia comprobada: reduce de forma significativa el tiempo de generación de informes, pasando de un proceso de aproximadamente medio turno (cerca de 3 horas) a una operación ágil y de pocos clics.
+
+Cero errores de transcripción: al tratarse de un proceso digital de extremo a extremo, se minimizan los errores asociados a la manipulación manual de los datos, garantizando mayor consistencia y confiabilidad en la información.
+
+Accesibilidad y facilidad de uso: al ser una aplicación web, no requiere instalación y es accesible desde cualquier navegador. Su interfaz está diseñada con un enfoque intuitivo, pensado para el usuario final y para su adopción inmediata.
